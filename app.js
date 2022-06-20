@@ -4,14 +4,20 @@ const fs = require('fs').promises;
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { Chart } = require('chart.js');
 const ChartDataLabels = require('chartjs-plugin-datalabels');
+const { normalize } = require('path');
 
 const width = 800
 const height = 800
 const backgroundColour = 'white'
-const bubbleChartOptions = {
+const bubbleChartOptions = (_title, _mcap) => options = {
     plugins: {
         datalabels: {
-            color: function(context) {
+            align: function(context) {
+                value = context.dataset.data[context.dataIndex]
+                if (value[2] < 10 || (value[2] < 20 && value[3].length > 7)) 
+                    return "end" 
+            },
+            color: function() {
                 return 'black';
             },
             font: {
@@ -20,8 +26,29 @@ const bubbleChartOptions = {
             formatter: function(value) {
                 return value[3]
             },
-            offset: 2,
+            offset: function(context) {
+                value = context.dataset.data[context.dataIndex]
+                if (value[2] < 10) 
+                    return 7
+                else if (value[2] < 20 && value[3].length > 7) {
+                    return 15
+                }
+            },
             padding: 0
+        },
+        legend: {
+            display: false
+        },
+        title: {
+            display: true,
+            text: _title,
+            font: {
+                size: 25
+            },
+            padding: {
+                top: 10,
+                bottom: 40
+            }
         }
     },
 
@@ -29,9 +56,43 @@ const bubbleChartOptions = {
     layout: {
         padding: 16
     },
+
+    scales: {    
+        x: {
+            title: {
+                display: true,
+                text: function() {
+                    if (_mcap) 
+                        return "mcap / tvl"
+                    else
+                        return "fdv / tvl"
+                },  
+                font: {
+                    size: 20
+                },
+                padding: {
+                    top: 20,
+                    bottom: 10
+                }
+            }
+        },
+        y: {
+            title: {
+                display: true,
+                text: "mcap / fdv",
+                font: {
+                    size: 20
+                },
+                padding: {
+                    top: 20,
+                    bottom: 10
+                }
+            }
+        }
+    }
 }
 
-async function createAndSaveChart(_result, _title, _type, _fileName) {
+async function createAndSaveChart(_result, _title, _type, _fileName, _mcap) {
     let config, data
     let colors = getColors(_result[0].length)
     const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour})
@@ -53,7 +114,6 @@ async function createAndSaveChart(_result, _title, _type, _fileName) {
         Chart.register(ChartDataLabels)
         data = {
             datasets: [{
-                label: _title,
                 data: _result,
                 backgroundColor: colors,
             }]
@@ -61,7 +121,7 @@ async function createAndSaveChart(_result, _title, _type, _fileName) {
         config = {
             type: _type,
             data: data,
-            options: bubbleChartOptions
+            options: bubbleChartOptions(_title, _mcap)
         }
     }
     const buffer = await chartJSNodeCanvas.renderToBuffer(config)
@@ -95,11 +155,7 @@ async function getProtocols() {
 
 async function getFirstTVLProtocols(_n) {
     let _apiLabels, _apiData
-    let totalTvl = 0
     let protocols = await getProtocols();
-    protocols.forEach(protocol => {
-        totalTvl += protocol.tvl
-    })
     let selected = protocols.slice(0, _n)
     _apiLabels = selected.map(p => p.name)
     _apiData = selected.map(p => p.tvl)
@@ -150,6 +206,15 @@ async function getFDVFromCoingecko(_id) {
     return fdv
 }
 
+// this functions takes a value which belongs to a range and 
+// transforms it into a new value based on a new range 
+function normalizeData(_value, _initRange, _finalRange) {
+    let normalizedValue = 
+        (_value - _initRange[0]) / (_initRange[1] - _initRange[0])*
+        (_finalRange[1] - _finalRange[0]) + _finalRange[0]
+    return normalizedValue
+}
+
 async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
     let x, y, r, label, num, den
     let protocols = await getProtocols();
@@ -171,13 +236,16 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
     selected = selected.slice(0, _n)
     let data = []
     selected.map(async p => {
-        // lower ratio = better protocol --> we must inverse
-        x = (p[num] / p[den])*-1
-        // higher ratio = better protocol --> no inverse
+        // lower ratio = better tokenomics
+        x = p[num] / p[den]
+        // higher ratio = better tokenomics
         y = p["mcap"] / p["fdv"]
-        // lower market cap = better protocol --> we must normalize
-        // TODO: normalize values
-        r = p["mcap"] / 10**7
+        // lower market cap = better opportunities 
+        // radius is weighted by market cap
+        // as the range of protocols market cap is pretty big,
+        // we need to normalize the data, and set a new range
+        r = p["mcap"]
+        r = normalizeData(r / 10**7, [0.03, 85], [5, 50])
         label = p.name
         data.push([x,y,r,label])
     })
@@ -216,7 +284,7 @@ async function main() {
     const firstN = 100
     const best = true
     const day = false
-    const mcap = false
+    const mcap = true
     // -----------------------------
     // const type = "bar"
     // const result = await getFirstTVLProtocols(n)
@@ -233,7 +301,7 @@ async function main() {
     const title = `First ${n} in top ${firstN} protocols with best ${mcap ? "mcap/tvl" : "fdv/tvl"} ratio weighing mcap/fdv`
     const fileName = `top_${n}_protocols_${mcap ? "mcap_tvl" : "fdv_tvl"}`
     // -----------------------------
-    await createAndSaveChart(result, title, type, fileName)
+    await createAndSaveChart(result, title, type, fileName, mcap)
     // -----------------------------
     // const result = await compareProtocolAToProtocolB("MakerDAO", "Curve")
     // console.log(result[0])
