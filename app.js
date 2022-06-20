@@ -6,8 +6,8 @@ const { Chart } = require('chart.js');
 const ChartDataLabels = require('chartjs-plugin-datalabels');
 const { normalize } = require('path');
 
-const width = 800
-const height = 800
+const width = 900
+const height = 900
 const backgroundColour = 'white'
 const bubbleChartOptions = (_title, _mcap) => options = {
     plugins: {
@@ -150,6 +150,8 @@ function getColors(_n) {
 async function getProtocols() {
     let response = await axios.get('https://api.llama.fi/protocols')
     let protocols = response.data;
+    // we'll exclude wBTC, hBTC and others
+    protocols = protocols.filter(p => !p.name.includes("BTC"))
     return protocols
 }
 
@@ -200,19 +202,25 @@ async function compareProtocolAToProtocolB(_protocolA, _protocolB) {
 }
 
 async function getFDVFromCoingecko(_id) {
-    let response = await axios.get(`https://api.coingecko.com/api/v3/coins/${_id}`)
-    let price = response.data.market_data.current_price.usd
-    let fdv = response.data.market_data.total_supply * price
-    return fdv
+    // could die because of delistings or too many requests
+    try {
+        let response = await axios.get(`https://api.coingecko.com/api/v3/coins/${_id}`)
+        let price = response.data.market_data.current_price.usd
+        let fdv = response.data.market_data.total_supply * price
+        return fdv
+    } catch(err) {
+        console.log("ERROR: Coingecko ded")
+        return 0
+    }
 }
 
-// this functions takes a value which belongs to a range and 
-// transforms it into a new value based on a new range 
+// this function takes a value which belongs to a range and 
+// fits it into a new value based on a new range 
 function normalizeData(_value, _initRange, _finalRange) {
-    let normalizedValue = 
-        (_value - _initRange[0]) / (_initRange[1] - _initRange[0])*
-        (_finalRange[1] - _finalRange[0]) + _finalRange[0]
-    return normalizedValue
+    return  (_value - _initRange[0]) / 
+            (_initRange[1] - _initRange[0])*
+            (_finalRange[1] - _finalRange[0]) +
+            _finalRange[0]
 }
 
 async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
@@ -225,7 +233,7 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
     await Promise.all(
         selected.map(async p => {
             if (isNaN(p.fdv)) {
-                if(p.gecko_id != null) {
+                if(p.gecko_id) {
                     p.fdv = await getFDVFromCoingecko(p.gecko_id)
                 }
             }
@@ -242,14 +250,25 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
         y = p["mcap"] / p["fdv"]
         // lower market cap = better opportunities 
         // radius is weighted by market cap
-        // as the range of protocols market cap is pretty big,
-        // we need to normalize the data, and set a new range
-        r = p["mcap"]
-        r = normalizeData(r / 10**7, [0.03, 85], [5, 50])
+        r = p["mcap"] / 10**7
         label = p.name
         data.push([x,y,r,label])
     })
-    console.log(data)
+    data = data.filter(d => !isNaN(d[2]))
+    // as the range of protocols market cap is pretty big,
+    // we need to normalize the data, and set a new range
+    let initRange = [
+        Math.min(...data.map(d => d[2])),
+        Math.max(...data.map(d => d[2])),
+    ]
+    // a radius will have values in this new range
+    let finalRange = [3, 50]
+    data = data.map(d => [
+        d[0], 
+        d[1], 
+        normalizeData(d[2], initRange, finalRange), 
+        d[3]]
+    )
     return data
 }
 
@@ -280,11 +299,11 @@ async function main() {
     // best = true --> top performers, false --> top losers
     // day = true --> last day, false --> last week
     // ratio = 0 --> mcap/tvl, 1 --> fdv/tvl, 2 --> mcap/fdv
-    const n = 20
+    const n = 30
     const firstN = 100
     const best = true
     const day = false
-    const mcap = true
+    const mcap = false
     // -----------------------------
     // const type = "bar"
     // const result = await getFirstTVLProtocols(n)
