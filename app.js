@@ -31,12 +31,10 @@ const bubbleChartOptions = {
     },
 }
 
-
 async function createAndSaveChart(_result, _title, _type, _fileName) {
     let config, data
     let colors = getColors(_result[0].length)
     const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour})
-    console.log(_result)
     if (_type != "bubble") {
         data = {
             labels: _result[0],
@@ -145,16 +143,34 @@ async function compareProtocolAToProtocolB(_protocolA, _protocolB) {
     return [tokenAPriceWithTokenBMcapTvl, tokenAPriceChange]
 }
 
+async function getFDVFromCoingecko(_id) {
+    let response = await axios.get(`https://api.coingecko.com/api/v3/coins/${_id}`)
+    let price = response.data.market_data.current_price.usd
+    let fdv = response.data.market_data.total_supply * price
+    return fdv
+}
+
 async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
     let x, y, r, label, num, den
     let protocols = await getProtocols();
-    protocols = protocols.filter(p => p.fdv != 0 && p.mcap != 0 && p.tvl != 0)
+    protocols = protocols.filter(p => p.mcap != 0 && p.tvl != 0)
     let selected = protocols.slice(0, _firstN)
+    // not everytime FDV is defined, and it's the only parameter we can 
+    // calculate using coingecko
+    await Promise.all(
+        selected.map(async p => {
+            if (isNaN(p.fdv)) {
+                if(p.gecko_id != null) {
+                    p.fdv = await getFDVFromCoingecko(p.gecko_id)
+                }
+            }
+        })
+    )
     _mcap ? ( num = "mcap", den = "tvl" ) : ( num = "fdv", den = "tvl" )
     selected = selected.sort((a, b) => a[num] / a[den] - b[num] / b[den])
     selected = selected.slice(0, _n)
     let data = []
-    selected.forEach(p => {
+    selected.map(async p => {
         // lower ratio = better protocol --> we must inverse
         x = (p[num] / p[den])*-1
         // higher ratio = better protocol --> no inverse
@@ -165,6 +181,7 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
         label = p.name
         data.push([x,y,r,label])
     })
+    console.log(data)
     return data
 }
 
