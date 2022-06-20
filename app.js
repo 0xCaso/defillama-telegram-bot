@@ -2,40 +2,89 @@ require('dotenv').config()
 const axios = require('axios').default;
 const fs = require('fs').promises;
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const { Chart } = require('chart.js');
+const ChartDataLabels = require('chartjs-plugin-datalabels');
 
 const width = 800
 const height = 800
 const backgroundColour = 'white'
+const bubbleChartOptions = {
+    plugins: {
+        datalabels: {
+            color: function(context) {
+                return 'black';
+            },
+            font: {
+                weight: 'bold'
+            },
+            formatter: function(value) {
+                return value[3]
+            },
+            offset: 2,
+            padding: 0
+        }
+    },
+
+    // Core options
+    layout: {
+        padding: 16
+    },
+}
+
 
 async function createAndSaveChart(_result, _title, _type, _fileName) {
-    let colors = getRandomColors(_result[0].length)
+    let config, data
+    let colors = getColors(_result[0].length)
     const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour})
-    const data = {
-        labels: _result[0],
-        datasets: [{
-            label: _title,
-            data: _result[1],
-            backgroundColor: colors,
-            hoverOffset: 4
-        }]
-    }
-    const config = {
-        type: _type,
-        data: data,
+    console.log(_result)
+    if (_type != "bubble") {
+        data = {
+            labels: _result[0],
+            datasets: [{
+                label: _title,
+                data: _result[1],
+                backgroundColor: colors,
+                hoverOffset: 4
+            }]
+        }
+        config = {
+            type: _type,
+            data: data,
+        }
+    } else {
+        Chart.register(ChartDataLabels)
+        data = {
+            datasets: [{
+                label: _title,
+                data: _result,
+                backgroundColor: colors,
+            }]
+        }
+        config = {
+            type: _type,
+            data: data,
+            options: bubbleChartOptions
+        }
     }
     const buffer = await chartJSNodeCanvas.renderToBuffer(config)
     await fs.writeFile('./charts/'+_fileName+'.png', buffer, 'base64')
 }
 
-function getRandomColors(_n) {
+function getColors(_n) {
+    const COLORS = [
+        '#4dc9f6',
+        '#f67019',
+        '#f53794',
+        '#537bc4',
+        '#acc236',
+        '#166a8f',
+        '#00a950',
+        '#58595b',
+        '#8549ba'
+    ];
     let colors = [];
     for(i = 0; i < _n; ++i) {
-        var letters = '0123456789ABCDEF';
-        var color = '#';
-        for (j = 0; j < 6; ++j) {
-            color += letters[Math.floor(Math.random() * 16)];
-        }
-        colors[i] = color
+       colors.push(COLORS[i % COLORS.length])
     }
     return colors;
 }
@@ -96,28 +145,48 @@ async function compareProtocolAToProtocolB(_protocolA, _protocolB) {
     return [tokenAPriceWithTokenBMcapTvl, tokenAPriceChange]
 }
 
-async function getFirstNTVLWithBestRatio(n, firstN, ratio) {
-    let _apiLabels, _apiData, num, den
+async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
+    let x, y, r, label, num, den
     let protocols = await getProtocols();
     protocols = protocols.filter(p => p.fdv != 0 && p.mcap != 0 && p.tvl != 0)
-    let selected = protocols.slice(0, firstN)
-    if (ratio == 0) {
-        num = "mcap"
-        den = "tvl"
-        selected = selected.sort((a, b) => a[num] / a[den] - b[num] / b[den])
-    } else if (ratio == 1) {
-        num = "fdv"
-        den = "tvl"
-        selected = selected.sort((a, b) => a[num] / a[den] - b[num] / b[den])
-    } else {
-        num = "mcap"
-        den = "fdv"
-        selected = selected.sort((a, b) => b[num] / b[den] - a[num] / a[den])
-    }
-    selected = selected.slice(0, n)
-    _apiLabels = selected.map(p => p.name)
-    _apiData = selected.map(p => p[num] / p[den])
-    return [_apiLabels, _apiData]
+    let selected = protocols.slice(0, _firstN)
+    _mcap ? ( num = "mcap", den = "tvl" ) : ( num = "fdv", den = "tvl" )
+    selected = selected.sort((a, b) => a[num] / a[den] - b[num] / b[den])
+    selected = selected.slice(0, _n)
+    let data = []
+    selected.forEach(p => {
+        // lower ratio = better protocol --> we must inverse
+        x = (p[num] / p[den])*-1
+        // higher ratio = better protocol --> no inverse
+        y = p["mcap"] / p["fdv"]
+        // lower market cap = better protocol --> we must normalize
+        // TODO: normalize values
+        r = p["mcap"] / 10**7
+        label = p.name
+        data.push([x,y,r,label])
+    })
+    return data
+}
+
+async function searchProtocolForName(_name) {
+    let protocols = await getProtocols();
+    let protocol = protocols.filter(
+        p => p.name
+                .toLowerCase()
+                .replace(" ","")
+                .includes(
+                    _name
+                    .toLowerCase()
+                    .replace(" ","")
+                )
+    )
+    return protocol
+}
+
+async function searchProtocolForSymbol(_symbol) {
+    let protocols = await getProtocols();
+    let protocol = protocols.filter(p => p.symbol.toLowerCase().includes(_symbol.toLowerCase()))
+    return protocol
 }
 
 async function main() {
@@ -130,26 +199,31 @@ async function main() {
     const firstN = 100
     const best = true
     const day = false
-    const ratio = 0
-    const type = "bar"
+    const mcap = false
     // -----------------------------
+    // const type = "bar"
     // const result = await getFirstTVLProtocols(n)
     // const title = `Top ${n} protocols for TVL`
     // const fileName = "top_"+n+"_protocols_tvl_"+type
     // -----------------------------
+    // const type = "bar"
     // const result = await getBestOrWorseOfFirstNTVL_LastDayOrWeek(n, firstN, best, day)
     // const title = `First ${n} ${best ? "best" : "worse"} performers in top ${firstN} protocols for TVL of ${day ? "last day" : "last week"}`
     // const fileName = `top_${n}_${best ? "best" : "worse"}_performers_${day ? "last_day" : "last_week"}`
     // -----------------------------
-    const result = await getFirstNTVLWithBestRatio(n, firstN, ratio)
-    const title = `First ${n} in top ${firstN} protocols with best ${ratio == 0 ? "mcap/tvl" : ratio == 1 ? "fdv/tvl" : "mcap/fdv"} ratio`
-    const fileName = `top_${n}_protocols_${ratio == 0 ? "mcap_tvl" : ratio == 1 ? "fdv_tvl" : "mcap_fdv"}`
+    const type = "bubble"
+    const result = await getFirstNTVLWithBestRatio(n, firstN, mcap)
+    const title = `First ${n} in top ${firstN} protocols with best ${mcap ? "mcap/tvl" : "fdv/tvl"} ratio weighing mcap/fdv`
+    const fileName = `top_${n}_protocols_${mcap ? "mcap_tvl" : "fdv_tvl"}`
     // -----------------------------
     await createAndSaveChart(result, title, type, fileName)
     // -----------------------------
     // const result = await compareProtocolAToProtocolB("MakerDAO", "Curve")
     // console.log(result[0])
     // console.log(result[1])
+    // -----------------------------
+    // const result = await searchProtocolForName("allbridge")
+    // console.log(result)
 }
 
 main()
