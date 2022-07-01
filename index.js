@@ -1,10 +1,20 @@
 require('dotenv').config()
-const { searchProtocolForSymbol, searchProtocolForName, compareProtocolAToProtocolB } = require('./app.js')
-const { Bot, session } = require("grammy");
+const { 
+    searchProtocolForSymbol, 
+    searchProtocolForName, 
+    compareProtocolAToProtocolB,
+    getFirstTVLProtocolsChart,
+} = require('./app.js')
+const { Bot, session, InputFile } = require("grammy");
 const { Menu } = require("@grammyjs/menu");
 const { conversations, createConversation } = require("@grammyjs/conversations");
 
 const bot = new Bot(process.env.TELEGRAM_API);
+const chartType = {
+    1: "bar",
+    2: "doughnut",
+    3: "pie",
+}
 
 bot.use(session({
     initial() {
@@ -14,13 +24,14 @@ bot.use(session({
 bot.use(conversations());
 bot.use(createConversation(searchProtocol));
 bot.use(createConversation(compareProtocols));
+bot.use(createConversation(getFirstTVLChart));
 
 const menu = new Menu("main-menu", { autoAnswer: false })
-  .text("🔎 Search Protocol", async (ctx) => await ctx.conversation.enter("searchProtocol") ).row()
-  .text("➗ Make a comparison", async (ctx) => await ctx.conversation.enter("compareProtocols") ).row()
-  .text("🏆 Get Chart #1", (ctx) => searchForSymbol(ctx)).row()
-  .text("📈 Get Chart #2", (ctx) => searchForSymbol(ctx)).row()
-  .text("💎 Get Chart #3", (ctx) => searchForSymbol(ctx))
+  .text("🔎 Search Protocol", async (ctx) => await ctx.conversation.enter("searchProtocol")).row()
+  .text("➗ Make a comparison", async (ctx) => await ctx.conversation.enter("compareProtocols")).row()
+  .text("🏆 Get Chart #1", async (ctx) => await ctx.conversation.enter("getFirstTVLChart")).row()
+  .text("📈 Get Chart #2", async (ctx) => searchForSymbol(ctx)).row()
+  .text("💎 Get Chart #3", async (ctx) => searchForSymbol(ctx))
 
 bot.use(menu);
 
@@ -135,15 +146,14 @@ async function searchProtocol(conversation, ctx) {
     return;
 }
 
+// TODO: CHECK IF PROTOCOL_A RESPONSE IS /CANCEL
 async function compareProtocols(conversation, ctx) {
     await ctx.deleteMessage();
     await ctx.reply("📝 Send the name (or symbol) of the first protocol");
     let protocolA = await tryFindingProtocolOrCancel(conversation, ctx)
-    console.log(protocolA)
     if (protocolA) {
         await ctx.reply("📝 Send the name (or symbol) of the second protocol");
         let protocolB = await tryFindingProtocolOrCancel(conversation, ctx)
-        console.log(protocolB)
         if (protocolB) {
             let result = await compareProtocolAToProtocolB(protocolA, protocolB)
             await ctx.reply("🤯 Making big maths...");
@@ -157,6 +167,36 @@ async function compareProtocols(conversation, ctx) {
     }
     await ctx.reply("That's it! Press /menu to do something else");
     return;
+}
+
+async function getFirstTVLChart(conversation, ctx) {
+    await ctx.deleteMessage();
+    await ctx.reply(
+        "❓ How many protocols do you want?\n\n"+
+        "Send a number between 10 and 50."
+    );
+    const { message } = await conversation.wait();
+    const number = parseInt(message.text);
+    if (number >= 10 && number <= 50) {
+        await ctx.reply(
+            "🥸 Chose the type of the chart:\n\n"+
+            "1 - 📊 Bar\n"+
+            "2 - 🍩 Doughnut\n"+
+            "3 - 🥧 Pie\n"
+        );
+        const { message } = await conversation.wait();
+        const type = parseInt(message.text);
+        if (type >= 1 && type <= 3) {
+            await ctx.reply("📊 Building your nice chart...");
+            let data = await getFirstTVLProtocolsChart(number, chartType[type]);
+            // data = data.split(",")[1];
+            // console.log(data)
+            // let buffer = Buffer.from(data, "base64");
+            // cut data from ,
+            ctx.replyWithPhoto( new InputFile(data) )
+            // bot.api.sendPhoto(message.chat.id, data)
+        }
+    }
 }
 
 bot.command("start", async (ctx) => await ctx.reply(

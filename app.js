@@ -4,8 +4,8 @@ const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { Chart } = require('chart.js');
 const ChartDataLabels = require('chartjs-plugin-datalabels');
 
-const width = 900
-const height = 900
+const width = 1800
+const height = 1800
 const backgroundColour = 'white'
 const bubbleChartOptions = (_title, _mcap) => options = {
     plugins: {
@@ -123,7 +123,7 @@ async function createAndSaveChart(_result, _title, _type, _fileName, _mcap) {
         }
     }
     const buffer = await chartJSNodeCanvas.renderToBuffer(config)
-    await fs.writeFile('./charts/'+_fileName+'.png', buffer, 'base64')
+    return buffer
 }
 
 function getColors(_n) {
@@ -295,45 +295,42 @@ async function main() {
     // best = true --> top performers, false --> top losers
     // day = true --> last day, false --> last week
     // ratio = 0 --> mcap/tvl, 1 --> fdv/tvl, 2 --> mcap/fdv
-    const n = 30
+    const n = 15
     const firstN = 200
     const best = true
     const day = false
     const mcap = false
     // -----------------------------
-    // const type = "bar"
-    // const result = await getFirstTVLProtocols(n)
-    // const title = `Top ${n} protocols for TVL`
-    // const fileName = "top_"+n+"_protocols_tvl_"+type
+    const type = "bar"
+    const result = await getFirstTVLProtocols(n)
+    const title = `Top ${n} protocols for TVL`
+    const fileName = "top_"+n+"_protocols_tvl_"+type
     // -----------------------------
     // const type = "bar"
     // const result = await getBestOrWorseOfFirstNTVL_LastDayOrWeek(n, firstN, best, day)
     // const title = `First ${n} ${best ? "best" : "worse"} performers in top ${firstN} protocols for TVL of ${day ? "last day" : "last week"}`
     // const fileName = `top_${n}_${best ? "best" : "worse"}_performers_${day ? "last_day" : "last_week"}`
     // -----------------------------
-    const type = "bubble"
-    const result = await getFirstNTVLWithBestRatio(n, firstN, mcap)
-    const title = `First ${n} in top ${firstN} protocols with best ${mcap ? "mcap/tvl" : "fdv/tvl"} ratio weighing mcap/fdv`
-    const fileName = `top_${n}_protocols_${mcap ? "mcap_tvl" : "fdv_tvl"}`
+    // const type = "bubble"
+    // const result = await getFirstNTVLWithBestRatio(n, firstN, mcap)
+    // const title = `First ${n} in top ${firstN} protocols with best ${mcap ? "mcap/tvl" : "fdv/tvl"} ratio weighing mcap/fdv`
+    // const fileName = `top_${n}_protocols_${mcap ? "mcap_tvl" : "fdv_tvl"}`
     // -----------------------------
     await createAndSaveChart(result, title, type, fileName, mcap)
-    // -----------------------------
-    // const result = await compareProtocolAToProtocolB("MakerDAO", "Curve")
-    // console.log(result[0])
-    // console.log(result[1])
     // -----------------------------
     // const result = await searchProtocolForName("allbridge")
     // console.log(result)
 }
 
+main()
+
 async function getFirstTVLProtocolsChart(_n, type) {
     let result = await getFirstTVLProtocols(_n)
-    let title = `Top ${n} protocols for TVL`
-    let fileName = "top_"+n+"_protocols_tvl_"+type
-    await createAndSaveChart(result, title, type, fileName)
+    let title = `Top ${_n} protocols for TVL`
+    let fileName = "top_"+_n+"_protocols_tvl_"+type
+    let base64img = await createAndSaveChart(result, title, type, fileName)
+    return base64img
 }
-
-
 
 module.exports = {
     searchProtocolForName, 
