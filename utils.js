@@ -4,9 +4,11 @@ const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { Chart } = require('chart.js');
 const ChartDataLabels = require('chartjs-plugin-datalabels');
 
-let width = 900;
-let height = 900;
+let width, height;
+const smallChartSize = 900
+const bigChartSize = 1500
 const backgroundColour = 'white'
+
 const bubbleChartOptions = (_title, _mcap) => options = {
     plugins: {
         datalabels: {
@@ -90,7 +92,7 @@ const bubbleChartOptions = (_title, _mcap) => options = {
     }
 }
 
-async function createAndSaveChart(_result, _title, _type, _fileName, _mcap) {
+async function createAndSaveChart(_result, _title, _type, _mcap) {
     let config, data
     let colors = getColors(_result[0].length)
     const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour})
@@ -179,25 +181,6 @@ async function getBestOrWorseOfFirstNTVL_LastDayOrWeek(_n, _firstN, _best, _day)
     return [_apiLabels, _apiData]
 }
 
-async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
-    // take data
-    const tokenAMcap = protocolAData.mcap
-    const tokenBMcap = protocolBData.mcap
-    const tokenATvl = protocolAData.tvl
-    const tokenBTvl = protocolBData.tvl
-    // take price of protocol A from coingecko
-    let response = await axios.get(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${protocolAData.gecko_id}&vs_currencies=usd`
-    )
-    const tokenAPrice = response.data[protocolAData.gecko_id].usd
-    // calculate change in price and percentage change
-    const tokenBMcapTvl = tokenBMcap / tokenBTvl
-    const tokenACirculating = tokenAMcap / tokenAPrice
-    const tokenAPriceWithTokenBMcapTvl = (tokenBMcapTvl * tokenATvl) / tokenACirculating
-    const tokenAPriceChange = tokenAPriceWithTokenBMcapTvl / tokenAPrice
-    return [tokenAPriceWithTokenBMcapTvl, tokenAPriceChange]
-}
-
 async function getFDVFromCoingecko(_id) {
     // could die because of delistings or too many requests
     try {
@@ -268,6 +251,18 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
     return data
 }
 
+function setImageSize(_n, _type) {
+    if (_n > 25 && _type == "bar") {
+        width = height = bigChartSize
+    } else {
+        width = height = smallChartSize
+    }
+}
+
+/**
+ *  EXPORTING FUNCTIONS
+ */
+
 async function searchProtocolForName(_name) {
     let protocols = await getProtocols();
     let protocol = protocols.filter(
@@ -289,49 +284,46 @@ async function searchProtocolForSymbol(_symbol) {
     return protocol
 }
 
-async function main() {
-    // n will be equal to 10 or 20 --> selected from firstN protocols
-    // firstN will be equal to 50 or 100
-    // best = true --> top performers, false --> top losers
-    // day = true --> last day, false --> last week
-    // ratio = 0 --> mcap/tvl, 1 --> fdv/tvl, 2 --> mcap/fdv
-    const n = 15
-    const firstN = 200
-    const best = true
-    const day = false
-    const mcap = false
-    // -----------------------------
-    const type = "bar"
-    const result = await getFirstTVLProtocols(n)
-    const title = `Top ${n} protocols for TVL`
-    const fileName = "top_"+n+"_protocols_tvl_"+type
-    // -----------------------------
-    // const type = "bar"
-    // const result = await getBestOrWorseOfFirstNTVL_LastDayOrWeek(n, firstN, best, day)
-    // const title = `First ${n} ${best ? "best" : "worse"} performers in top ${firstN} protocols for TVL of ${day ? "last day" : "last week"}`
-    // const fileName = `top_${n}_${best ? "best" : "worse"}_performers_${day ? "last_day" : "last_week"}`
-    // -----------------------------
-    // const type = "bubble"
-    // const result = await getFirstNTVLWithBestRatio(n, firstN, mcap)
-    // const title = `First ${n} in top ${firstN} protocols with best ${mcap ? "mcap/tvl" : "fdv/tvl"} ratio weighing mcap/fdv`
-    // const fileName = `top_${n}_protocols_${mcap ? "mcap_tvl" : "fdv_tvl"}`
-    // -----------------------------
-    await createAndSaveChart(result, title, type, fileName, mcap)
-    // -----------------------------
-    // const result = await searchProtocolForName("allbridge")
-    // console.log(result)
+async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
+    // take data
+    const tokenAMcap = protocolAData.mcap
+    const tokenBMcap = protocolBData.mcap
+    const tokenATvl = protocolAData.tvl
+    const tokenBTvl = protocolBData.tvl
+    // take price of protocol A from coingecko
+    let response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${protocolAData.gecko_id}&vs_currencies=usd`
+    )
+    const tokenAPrice = response.data[protocolAData.gecko_id].usd
+    // calculate change in price and percentage change
+    const tokenBMcapTvl = tokenBMcap / tokenBTvl
+    const tokenACirculating = tokenAMcap / tokenAPrice
+    const tokenAPriceWithTokenBMcapTvl = (tokenBMcapTvl * tokenATvl) / tokenACirculating
+    const tokenAPriceChange = tokenAPriceWithTokenBMcapTvl / tokenAPrice
+    return [tokenAPriceWithTokenBMcapTvl, tokenAPriceChange]
 }
 
-async function getFirstTVLProtocolsChart(_n, type) {
-    if (_n > 25 && type == "bar") {
-        width = height = 1400
-    } else {
-        width = height = 900
-    }
+async function getFirstTVLProtocolsChart(_n, _type) {
+    setImageSize(_n, _type)
     let result = await getFirstTVLProtocols(_n)
     let title = `Top ${_n} protocols for TVL`
-    let fileName = "top_"+_n+"_protocols_tvl_"+type
-    let base64img = await createAndSaveChart(result, title, type, fileName)
+    let base64img = await createAndSaveChart(result, title, _type)
+    return base64img
+}
+
+async function getTopPerformersChart(_firstN, _n, _best, _day, _type) {
+    setImageSize(_n, _type)
+    let result = await getBestOrWorseOfFirstNTVL_LastDayOrWeek(_n, _firstN, _best, _day)
+    let title = `First ${_n} ${_best ? "best" : "worse"} performers in top ${_firstN} protocols for TVL of ${_day ? "last day" : "last week"}`
+    let base64img = await createAndSaveChart(result, title, _type)
+    return base64img
+}
+
+async function getBestRatioChart(_firstN, _n, _mcap) {
+    setImageSize(_n, "bubble")
+    let result = await getFirstNTVLWithBestRatio(_n, _firstN, _mcap)
+    let title = `First ${_n} in top ${_firstN} protocols with best ${_mcap ? "mcap/tvl" : "fdv/tvl"} ratio weighing mcap/fdv`
+    let base64img = await createAndSaveChart(result, title, "bubble", _mcap)
     return base64img
 }
 
@@ -340,4 +332,6 @@ module.exports = {
     searchProtocolForSymbol,
     compareProtocolAToProtocolB,
     getFirstTVLProtocolsChart,
+    getTopPerformersChart,
+    getBestRatioChart,
 }

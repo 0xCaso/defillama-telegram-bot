@@ -1,9 +1,12 @@
 require('dotenv').config()
+
 const { 
     searchProtocolForSymbol, 
     searchProtocolForName, 
     compareProtocolAToProtocolB,
     getFirstTVLProtocolsChart,
+    getTopPerformersChart,
+    getBestRatioChart,
 } = require('./utils.js')
 const { Bot, session, InputFile } = require("grammy");
 const { Menu } = require("@grammyjs/menu");
@@ -21,17 +24,21 @@ bot.use(session({
         return {};
     },
 }));
+
 bot.use(conversations());
+
 bot.use(createConversation(searchProtocol));
 bot.use(createConversation(compareProtocols));
 bot.use(createConversation(getFirstTVLChart));
+bot.use(createConversation(getPerformersChart));
+bot.use(createConversation(getRatioChart));
 
 const menu = new Menu("main-menu", { autoAnswer: false })
   .text("🔎 Search Protocol", async (ctx) => await ctx.conversation.enter("searchProtocol")).row()
   .text("➗ Make a comparison", async (ctx) => await ctx.conversation.enter("compareProtocols")).row()
   .text("🏆 Get Chart #1", async (ctx) => await ctx.conversation.enter("getFirstTVLChart")).row()
-  .text("📈 Get Chart #2", async (ctx) => searchForSymbol(ctx)).row()
-  .text("💎 Get Chart #3", async (ctx) => searchForSymbol(ctx))
+  .text("📈 Get Chart #2", async (ctx) => await ctx.conversation.enter("getPerformersChart")).row()
+  .text("💎 Get Chart #3", async (ctx) => await ctx.conversation.enter("getRatioChart"))
 
 bot.use(menu);
 
@@ -42,7 +49,7 @@ async function showMenu(ctx) {
         `➗ Get price of protocol A with \nmcap/tvl ratio of protocol B\n`+
         `🏆 Get top n protocols for TVL\n`+
         `📈 Get top n performers/losers of last day/week\n`+
-        `💎 Get top n protocols with best \nmcap/tvl or fdv/tvl weighting mcap/fdv\n`,
+        `💎 Get top n protocols with best \nmcap/tvl or fdv/tvl weighing mcap/fdv\n`,
         { reply_markup: menu }
     );
 }
@@ -129,7 +136,7 @@ async function tryFindingProtocolOrCancel(conversation, ctx) {
             if (protocol) {
                 ok = true
             } else {
-                ctx.reply("🥲 Whoops! No results found. Try again or press /cancel to abort.");
+                await ctx.reply("🥲 Whoops! No results found. Try again or press /cancel to abort.");
                 ok = false
             }
         }
@@ -146,7 +153,6 @@ async function searchProtocol(conversation, ctx) {
     return;
 }
 
-// TODO: CHECK IF PROTOCOL_A RESPONSE IS /CANCEL
 async function compareProtocols(conversation, ctx) {
     await ctx.deleteMessage();
     await ctx.reply("📝 Send the name (or symbol) of the first protocol");
@@ -169,41 +175,127 @@ async function compareProtocols(conversation, ctx) {
     return;
 }
 
-async function getFirstTVLChart(conversation, ctx) {
-    await ctx.deleteMessage();
-    await ctx.reply(
-        "❓ How many protocols do you want?\n\n"+
-        "Send a number between 10 and 50."
-    );
+async function getNumberOrCancel(condition, conversation, ctx) {
     let ok = true
+    let number = undefined
     do {
         const { message } = await conversation.wait();
         if (message.text == "/cancel") {
             ok = true
         }
         else {
-            const number = parseInt(message.text);
-            if (number >= 10 && number <= 50) {
-                await ctx.reply(
-                    "🥸 Chose the type of the chart:\n\n"+
-                    "1 - 📊 Bar\n"+
-                    "2 - 🍩 Doughnut\n"+
-                    "3 - 🥧 Pie\n"
-                );
-                const { message } = await conversation.wait();
-                const type = parseInt(message.text);
-                if (type >= 1 && type <= 3) {
-                    await ctx.reply("📊 Building your nice chart...");
-                    let buffer = await getFirstTVLProtocolsChart(number, chartType[type]);
-                    await ctx.replyWithPhoto(new InputFile(buffer))
-                    ok = true
-                }
+            number = parseInt(message.text)
+            if (condition(number)) {
+                ok = true
             } else {
-                ctx.reply("🥲 Invalid number, try again or press /cancel to abort.");
+                await ctx.reply("🥲 Invalid number, try again or press /cancel to abort.");
                 ok = false
             }
         }
     } while(!ok)
+    return number
+}
+
+async function getFirstTVLChart(conversation, ctx) {
+    await ctx.deleteMessage();
+    await ctx.reply(
+        "❓ How many protocols do you want in the chart?\n\n"+
+        "Send a number between 10 and 50."
+    );
+    let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
+    if (topN) {
+        await ctx.reply(
+            "🥸 Chose the type of the chart:\n\n"+
+            "1 - 📊 Bar\n"+
+            "2 - 🍩 Doughnut\n"+
+            "3 - 🥧 Pie\n"
+        );
+        let type = await getNumberOrCancel(number => number >= 1 && number <= 3, conversation, ctx)
+        if (type) {
+            await ctx.reply("🖌️ Drawing your nice chart...");
+            let buffer = await getFirstTVLProtocolsChart(topN, chartType[type]);
+            await ctx.replyWithPhoto(new InputFile(buffer))
+        }
+    }
+    await ctx.reply("That's it! Press /menu to do something else");
+    return;
+}
+
+async function getPerformersChart(conversation, ctx) {
+    await ctx.deleteMessage();
+    await ctx.reply(
+        "❓ Do you wanna consider top 50 or top 100 protools?\n\n"+
+        "Send 50 or 100."
+    );
+    let firstN = await getNumberOrCancel(number => number == 50 || number == 100, conversation, ctx)
+    if (firstN) {
+        await ctx.reply(
+            "❓ How many protocols do you want in the chart?\n\n"+
+            "Send a number between 10 and 50."
+        );
+        let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
+        if (topN) {
+            await ctx.reply(
+                "❓ Do you want the best or the worst performers?\n\n"+
+                "Send 1 for best, 2 for worst."
+            );
+            let best = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
+            if (best) {
+                best == 1 ? best = true : best = false
+                await ctx.reply(
+                    "❓ Do you wanna consider last day or week?\n\n"+
+                    "Send 1 for day, 2 for week."
+                );
+                let day = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
+                if (day) {
+                    day == 1 ? day = true : day = false
+                    await ctx.reply(
+                        "🥸 Chose the type of the chart:\n\n"+
+                        "1 - 📊 Bar\n"+
+                        "2 - 🍩 Doughnut\n"+
+                        "3 - 🥧 Pie\n"
+                    );
+                    let type = await getNumberOrCancel(number => number >= 1 && number <= 3, conversation, ctx)
+                    if (type) {
+                        await ctx.reply("🖌️ Drawing your nice chart...");
+                        let buffer = await getTopPerformersChart(firstN, topN, best, day, chartType[type]);
+                        await ctx.replyWithPhoto(new InputFile(buffer))
+                    }
+                }
+            }
+        }
+    }
+    await ctx.reply("That's it! Press /menu to do something else");
+    return;
+}
+
+async function getRatioChart(conversation, ctx) {
+    await ctx.deleteMessage();
+    await ctx.reply(
+        "❓ Do you wanna consider top 50 or top 100 protools?\n\n"+
+        "Send 50 or 100."
+    );
+    let firstN = await getNumberOrCancel(number => number == 50 || number == 100, conversation, ctx)
+    if (firstN) {
+        await ctx.reply(
+            "❓ How many protocols do you want?\n\n"+
+            "Send a number between 10 and 50."
+        );
+        let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
+        if (topN) {
+            await ctx.reply(
+                "❓ Do you wanna consider Mcap or FDV?\n\n"+
+                "Send 1 for Mcap, 2 for FDV."
+            );
+            let mcap = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
+            if (mcap) {
+                mcap == 1 ? mcap = true : mcap = false
+                await ctx.reply("🖌️ Drawing your nice chart...");
+                let buffer = await getBestRatioChart(firstN, topN, mcap);
+                await ctx.replyWithPhoto(new InputFile(buffer))
+            }
+        }
+    }
     await ctx.reply("That's it! Press /menu to do something else");
     return;
 }
