@@ -1,10 +1,8 @@
-require('dotenv').config()
 const axios = require('axios').default;
 const fs = require('fs').promises;
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { Chart } = require('chart.js');
 const ChartDataLabels = require('chartjs-plugin-datalabels');
-const { normalize } = require('path');
 
 const width = 900
 const height = 900
@@ -181,17 +179,16 @@ async function getBestOrWorseOfFirstNTVL_LastDayOrWeek(_n, _firstN, _best, _day)
     return [_apiLabels, _apiData]
 }
 
-async function compareProtocolAToProtocolB(_protocolA, _protocolB) {
-    let protocols = await getProtocols();
-    let protocolAData = protocols.find(p => p.name == _protocolA)
-    let protocolBData = protocols.find(p => p.name == _protocolB)
+async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
     // take data
     const tokenAMcap = protocolAData.mcap
     const tokenBMcap = protocolBData.mcap
     const tokenATvl = protocolAData.tvl
     const tokenBTvl = protocolBData.tvl
     // take price of protocol A from coingecko
-    let response = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${protocolAData.gecko_id}&vs_currencies=usd`)
+    let response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${protocolAData.gecko_id}&vs_currencies=usd`
+    )
     const tokenAPrice = response.data[protocolAData.gecko_id].usd
     // calculate change in price and percentage change
     const tokenBMcapTvl = tokenBMcap / tokenBTvl
@@ -243,13 +240,12 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
     selected = selected.sort((a, b) => a[num] / a[den] - b[num] / b[den])
     selected = selected.slice(0, _n)
     let data = []
-    selected.map(async p => {
+    selected.map(p => {
         // lower ratio = better tokenomics
         x = p[num] / p[den]
         // higher ratio = better tokenomics
         y = p["mcap"] / p["fdv"]
         // lower market cap = better opportunities 
-        // radius is weighted by market cap
         r = p["mcap"] / 10**7
         label = p.name
         data.push([x,y,r,label])
@@ -300,7 +296,7 @@ async function main() {
     // day = true --> last day, false --> last week
     // ratio = 0 --> mcap/tvl, 1 --> fdv/tvl, 2 --> mcap/fdv
     const n = 30
-    const firstN = 100
+    const firstN = 200
     const best = true
     const day = false
     const mcap = false
@@ -330,4 +326,18 @@ async function main() {
     // console.log(result)
 }
 
-main()
+async function getFirstTVLProtocolsChart(_n, type) {
+    let result = await getFirstTVLProtocols(_n)
+    let title = `Top ${n} protocols for TVL`
+    let fileName = "top_"+n+"_protocols_tvl_"+type
+    await createAndSaveChart(result, title, type, fileName)
+}
+
+
+
+module.exports = {
+    searchProtocolForName, 
+    searchProtocolForSymbol,
+    compareProtocolAToProtocolB,
+    getFirstTVLProtocolsChart,
+}
