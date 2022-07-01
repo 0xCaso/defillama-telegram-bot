@@ -4,7 +4,7 @@ const {
     searchProtocolForName, 
     compareProtocolAToProtocolB,
     getFirstTVLProtocolsChart,
-} = require('./app.js')
+} = require('./utils.js')
 const { Bot, session, InputFile } = require("grammy");
 const { Menu } = require("@grammyjs/menu");
 const { conversations, createConversation } = require("@grammyjs/conversations");
@@ -175,28 +175,37 @@ async function getFirstTVLChart(conversation, ctx) {
         "❓ How many protocols do you want?\n\n"+
         "Send a number between 10 and 50."
     );
-    const { message } = await conversation.wait();
-    const number = parseInt(message.text);
-    if (number >= 10 && number <= 50) {
-        await ctx.reply(
-            "🥸 Chose the type of the chart:\n\n"+
-            "1 - 📊 Bar\n"+
-            "2 - 🍩 Doughnut\n"+
-            "3 - 🥧 Pie\n"
-        );
+    let ok = true
+    do {
         const { message } = await conversation.wait();
-        const type = parseInt(message.text);
-        if (type >= 1 && type <= 3) {
-            await ctx.reply("📊 Building your nice chart...");
-            let data = await getFirstTVLProtocolsChart(number, chartType[type]);
-            // data = data.split(",")[1];
-            // console.log(data)
-            // let buffer = Buffer.from(data, "base64");
-            // cut data from ,
-            ctx.replyWithPhoto( new InputFile(data) )
-            // bot.api.sendPhoto(message.chat.id, data)
+        if (message.text == "/cancel") {
+            ok = true
         }
-    }
+        else {
+            const number = parseInt(message.text);
+            if (number >= 10 && number <= 50) {
+                await ctx.reply(
+                    "🥸 Chose the type of the chart:\n\n"+
+                    "1 - 📊 Bar\n"+
+                    "2 - 🍩 Doughnut\n"+
+                    "3 - 🥧 Pie\n"
+                );
+                const { message } = await conversation.wait();
+                const type = parseInt(message.text);
+                if (type >= 1 && type <= 3) {
+                    await ctx.reply("📊 Building your nice chart...");
+                    let buffer = await getFirstTVLProtocolsChart(number, chartType[type]);
+                    await ctx.replyWithPhoto(new InputFile(buffer))
+                    ok = true
+                }
+            } else {
+                ctx.reply("🥲 Invalid number, try again or press /cancel to abort.");
+                ok = false
+            }
+        }
+    } while(!ok)
+    await ctx.reply("That's it! Press /menu to do something else");
+    return;
 }
 
 bot.command("start", async (ctx) => await ctx.reply(

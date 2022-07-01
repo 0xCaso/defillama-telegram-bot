@@ -4,8 +4,8 @@ const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { Chart } = require('chart.js');
 const ChartDataLabels = require('chartjs-plugin-datalabels');
 
-const width = 1800
-const height = 1800
+let width = 900;
+let height = 900;
 const backgroundColour = 'white'
 const bubbleChartOptions = (_title, _mcap) => options = {
     plugins: {
@@ -322,9 +322,12 @@ async function main() {
     // console.log(result)
 }
 
-main()
-
 async function getFirstTVLProtocolsChart(_n, type) {
+    if (_n > 25 && type == "bar") {
+        width = height = 1400
+    } else {
+        width = height = 900
+    }
     let result = await getFirstTVLProtocols(_n)
     let title = `Top ${_n} protocols for TVL`
     let fileName = "top_"+_n+"_protocols_tvl_"+type
