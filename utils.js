@@ -1,13 +1,10 @@
 const axios = require('axios').default;
-const fs = require('fs').promises;
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { Chart } = require('chart.js');
 const ChartDataLabels = require('chartjs-plugin-datalabels');
 
-let width, height;
-const smallChartSize = 900
-const bigChartSize = 1500
-const backgroundColour = 'white'
+const smallChartJSNodeCanvas = new ChartJSNodeCanvas({ width: 900, height: 900, backgroundColour: 'white'})
+const bigChartJSNodeCanvas = new ChartJSNodeCanvas({ width: 1500, height: 1500, backgroundColour: 'white'})
 
 const bubbleChartOptions = (_title, _mcap) => options = {
     plugins: {
@@ -28,7 +25,7 @@ const bubbleChartOptions = (_title, _mcap) => options = {
             },
             offset: function(context) {
                 value = context.dataset.data[context.dataIndex]
-                if (value[2] < 10) 
+                if (value[2] < 10)
                     return 7
                 else if (value[2] < 20 && value[3].length > 7) {
                     return 15
@@ -52,7 +49,6 @@ const bubbleChartOptions = (_title, _mcap) => options = {
         }
     },
 
-    // Core options
     layout: {
         padding: 16
     },
@@ -92,12 +88,11 @@ const bubbleChartOptions = (_title, _mcap) => options = {
     }
 }
 
-async function createAndSaveChart(_result, _title, _type, _mcap) {
-    let config, data
+async function createAndSaveChart(_big, _result, _title, _type, _mcap) {
+    let config, myData
     let colors = getColors(_result[0].length)
-    const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour})
     if (_type != "bubble") {
-        data = {
+        myData = {
             labels: _result[0],
             datasets: [{
                 label: _title,
@@ -108,11 +103,11 @@ async function createAndSaveChart(_result, _title, _type, _mcap) {
         }
         config = {
             type: _type,
-            data: data,
+            data: myData,
         }
     } else {
         Chart.register(ChartDataLabels)
-        data = {
+        myData = {
             datasets: [{
                 data: _result,
                 backgroundColor: colors,
@@ -120,11 +115,15 @@ async function createAndSaveChart(_result, _title, _type, _mcap) {
         }
         config = {
             type: _type,
-            data: data,
+            data: myData,
             options: bubbleChartOptions(_title, _mcap)
         }
     }
-    const buffer = await chartJSNodeCanvas.renderToBuffer(config)
+    let buffer
+    _big ? 
+        buffer = await bigChartJSNodeCanvas.renderToBuffer(config) :
+        buffer = await smallChartJSNodeCanvas.renderToBuffer(config)
+    if (_type == "bubble") Chart.unregister(ChartDataLabels)
     return buffer
 }
 
@@ -253,9 +252,9 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
 
 function setImageSize(_n, _type) {
     if (_n > 25 && _type == "bar") {
-        width = height = bigChartSize
+        return true
     } else {
-        width = height = smallChartSize
+        return false
     }
 }
 
@@ -304,27 +303,26 @@ async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
 }
 
 async function getFirstTVLProtocolsChart(_n, _type) {
-    setImageSize(_n, _type)
+    let big = setImageSize(_n, _type)
     let result = await getFirstTVLProtocols(_n)
     let title = `Top ${_n} protocols for TVL`
-    let base64img = await createAndSaveChart(result, title, _type)
-    return base64img
+    let bufferImg = await createAndSaveChart(big, result, title, _type)
+    return bufferImg
 }
 
 async function getTopPerformersChart(_firstN, _n, _best, _day, _type) {
-    setImageSize(_n, _type)
+    let big = setImageSize(_n, _type)
     let result = await getBestOrWorseOfFirstNTVL_LastDayOrWeek(_n, _firstN, _best, _day)
     let title = `First ${_n} ${_best ? "best" : "worse"} performers in top ${_firstN} protocols for TVL of ${_day ? "last day" : "last week"}`
-    let base64img = await createAndSaveChart(result, title, _type)
-    return base64img
+    let bufferImg = await createAndSaveChart(big, result, title, _type)
+    return bufferImg
 }
 
 async function getBestRatioChart(_firstN, _n, _mcap) {
-    setImageSize(_n, "bubble")
     let result = await getFirstNTVLWithBestRatio(_n, _firstN, _mcap)
     let title = `First ${_n} in top ${_firstN} protocols with best ${_mcap ? "mcap/tvl" : "fdv/tvl"} ratio weighing mcap/fdv`
-    let base64img = await createAndSaveChart(result, title, "bubble", _mcap)
-    return base64img
+    let bufferImg = await createAndSaveChart(false, result, title, "bubble", _mcap)
+    return bufferImg
 }
 
 module.exports = {
