@@ -293,6 +293,7 @@ async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
     let response = await axios.get(
         `https://api.coingecko.com/api/v3/simple/price?ids=${protocolAData.gecko_id}&vs_currencies=usd`
     )
+    // TODO: CHECK IF USD FIELD IS OK
     const tokenAPrice = response.data[protocolAData.gecko_id].usd
     // calculate change in price and percentage change
     const tokenBMcapTvl = tokenBMcap / tokenBTvl

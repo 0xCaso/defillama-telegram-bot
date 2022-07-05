@@ -8,7 +8,7 @@ const {
     getTopPerformersChart,
     getBestRatioChart,
 } = require('./utils.js')
-const { Bot, session, InputFile } = require("grammy");
+const { Bot, session, InputFile, Keyboard } = require("grammy");
 const { Menu } = require("@grammyjs/menu");
 const { conversations, createConversation } = require("@grammyjs/conversations");
 
@@ -99,7 +99,18 @@ async function searchWithRightFunction(msg) {
 async function checkIfProtocolFound(result, conversation, ctx) {
     if (result.length > 1) {
         await ctx.reply("❗ They found more than one result. Please reply with a number (1, 2, 69420, ...):");
-        await ctx.reply(result.map((r, i) => `${i + 1} - ${r.name}`).join("\n"));
+        const results = result.map((r, i) => `${i + 1} - ${r.name}`).join("\n")
+        const numbers = new Keyboard()
+        result.map((r,i) => {
+            numbers.text(`${i + 1}`)
+            if ((i+1) % 4 == 0) numbers.row()
+        })
+        await ctx.reply(results,{
+            reply_markup: {
+                one_time_keyboard: true,
+                keyboard: numbers.build(),
+            }
+        });
         let ok = true
         do {
             const { message } = await conversation.wait();
@@ -153,6 +164,7 @@ async function searchProtocol(conversation, ctx) {
     return;
 }
 
+// TODO: FIX COMPARE IN UTILS.JS
 async function compareProtocols(conversation, ctx) {
     await ctx.deleteMessage();
     await ctx.reply("📝 Send the name (or symbol) of the first protocol");
@@ -178,10 +190,12 @@ async function compareProtocols(conversation, ctx) {
 async function getNumberOrCancel(condition, conversation, ctx) {
     let ok = true
     let number = undefined
+    let canceled = false
     do {
         const { message } = await conversation.wait();
         if (message.text == "/cancel") {
             ok = true
+            canceled = true
         }
         else {
             number = parseInt(message.text)
@@ -193,23 +207,39 @@ async function getNumberOrCancel(condition, conversation, ctx) {
             }
         }
     } while(!ok)
-    return number
+    if (!canceled)
+        return number
+}
+
+async function replyWithNumberKeyboard(ctx, question, keyboard) {
+    await ctx.reply(question,{
+        reply_markup: {
+            one_time_keyboard: true,
+            keyboard: keyboard.build(),
+        }
+    });
 }
 
 async function getFirstTVLChart(conversation, ctx) {
     await ctx.deleteMessage();
-    await ctx.reply(
+    const question = 
         "❓ How many protocols do you want in the chart?\n\n"+
         "Send a number between 10 and 50."
-    );
+    const numberKeyboard = new Keyboard()
+        .text("10").text("15").text("20").row()
+        .text("25").text("30").text("35").row()
+        .text("40").text("45").text("50")
+    await replyWithNumberKeyboard(ctx, question, numberKeyboard)
     let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
     if (topN) {
-        await ctx.reply(
+        const question = 
             "🥸 Chose the type of the chart:\n\n"+
             "1 - 📊 Bar\n"+
             "2 - 🍩 Doughnut\n"+
             "3 - 🥧 Pie\n"
-        );
+        const numberKeyboard = new Keyboard()
+            .text("1").text("2").text("3")
+        await replyWithNumberKeyboard(ctx, question, numberKeyboard)
         let type = await getNumberOrCancel(number => number >= 1 && number <= 3, conversation, ctx)
         if (type) {
             await ctx.reply("🖌️ Drawing your nice chart...");
@@ -223,38 +253,50 @@ async function getFirstTVLChart(conversation, ctx) {
 
 async function getPerformersChart(conversation, ctx) {
     await ctx.deleteMessage();
-    await ctx.reply(
+    const question =
         "❓ Do you wanna consider top 50 or top 100 protools?\n\n"+
         "Send 50 or 100."
-    );
+    const numberKeyboard = new Keyboard()
+        .text("50").text("100")
+    await replyWithNumberKeyboard(ctx, question, numberKeyboard)
     let firstN = await getNumberOrCancel(number => number == 50 || number == 100, conversation, ctx)
     if (firstN) {
-        await ctx.reply(
+        const question = 
             "❓ How many protocols do you want in the chart?\n\n"+
             "Send a number between 10 and 50."
-        );
+        const numberKeyboard = new Keyboard()
+            .text("10").text("15").text("20").row()
+            .text("25").text("30").text("35").row()
+            .text("40").text("45").text("50")
+        await replyWithNumberKeyboard(ctx, question, numberKeyboard)
         let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
         if (topN) {
-            await ctx.reply(
+            const question =
                 "❓ Do you want the best or the worst performers?\n\n"+
                 "Send 1 for best, 2 for worst."
-            );
+            const numberKeyboard = new Keyboard()
+                .text("1 - Best").text("2 - Worst")
+            await replyWithNumberKeyboard(ctx, question, numberKeyboard)
             let best = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
             if (best) {
                 best == 1 ? best = true : best = false
-                await ctx.reply(
+                const question =
                     "❓ Do you wanna consider last day or week?\n\n"+
                     "Send 1 for day, 2 for week."
-                );
+                const numberKeyboard = new Keyboard()
+                    .text("1 - Day").text("2 - Week")
+                await replyWithNumberKeyboard(ctx, question, numberKeyboard)
                 let day = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
                 if (day) {
                     day == 1 ? day = true : day = false
-                    await ctx.reply(
+                    const question = 
                         "🥸 Chose the type of the chart:\n\n"+
                         "1 - 📊 Bar\n"+
                         "2 - 🍩 Doughnut\n"+
                         "3 - 🥧 Pie\n"
-                    );
+                    const numberKeyboard = new Keyboard()
+                        .text("1").text("2").text("3")
+                    await replyWithNumberKeyboard(ctx, question, numberKeyboard)
                     let type = await getNumberOrCancel(number => number >= 1 && number <= 3, conversation, ctx)
                     if (type) {
                         await ctx.reply("🖌️ Drawing your nice chart...");
@@ -271,22 +313,30 @@ async function getPerformersChart(conversation, ctx) {
 
 async function getRatioChart(conversation, ctx) {
     await ctx.deleteMessage();
-    await ctx.reply(
+    const question =
         "❓ Do you wanna consider top 50 or top 100 protools?\n\n"+
         "Send 50 or 100."
-    );
+    const numberKeyboard = new Keyboard()
+        .text("50").text("100")
+    await replyWithNumberKeyboard(ctx, question, numberKeyboard)
     let firstN = await getNumberOrCancel(number => number == 50 || number == 100, conversation, ctx)
     if (firstN) {
-        await ctx.reply(
-            "❓ How many protocols do you want?\n\n"+
+        const question = 
+            "❓ How many protocols do you want in the chart?\n\n"+
             "Send a number between 10 and 50."
-        );
+        const numberKeyboard = new Keyboard()
+            .text("10").text("15").text("20").row()
+            .text("25").text("30").text("35").row()
+            .text("40").text("45").text("50")
+        await replyWithNumberKeyboard(ctx, question, numberKeyboard)
         let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
         if (topN) {
-            await ctx.reply(
+            const question =
                 "❓ Do you wanna consider Mcap or FDV?\n\n"+
                 "Send 1 for Mcap, 2 for FDV."
-            );
+            const numberKeyboard = new Keyboard()
+                .text("1 - Mcap").text("2 - FDV")
+            await replyWithNumberKeyboard(ctx, question, numberKeyboard)
             let mcap = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
             if (mcap) {
                 mcap == 1 ? mcap = true : mcap = false
