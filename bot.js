@@ -23,11 +23,9 @@ const chartType = {
 // commandHistory value is wrapped in an object
 // because of a conversation plugin bugged
 bot.use(session({
-    initial() {
-        return {
-            commandHistory: { value: [] }
-        };
-    },
+    initial: () => ({
+        commandHistory: { value: [] }
+    }),
 }));
 
 bot.use(conversations());
@@ -50,6 +48,59 @@ const menu = new Menu("main-menu", { autoAnswer: false })
     .text("🗑️ Delete history", async (ctx) => await ctx.conversation.enter("deleteHistory"))
 
 bot.use(menu);
+
+bot.command("start", async (ctx) => await ctx.reply(
+    "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
+));
+bot.command("menu", async (ctx) => await showMenu(ctx) );
+bot.command("searchProtocol", async (ctx) => await commandSearchProtocol(ctx) );
+bot.command("compareProtocols", async (ctx) => await commandCompareProtocols(ctx) );
+bot.command("tvlChart", async (ctx) => await commandTvlChart(ctx) );
+bot.command("performersChart", async (ctx) => await commandPerformersChart(ctx) );
+bot.command("ratioChart", async (ctx) => await commandRatioChart(ctx) );
+
+bot.api.setMyCommands([
+    { command: "menu", description: "Show the main menu" },
+])
+
+async function commandSearchProtocol(ctx, values) {
+    let protocol = await searchWithRightFunction(values[0]);
+    if (protocol) {
+        await printInfoProtocol(ctx, protocol[0])
+    }
+}
+
+async function commandCompareProtocols(ctx, values) {
+    let protocolA = await searchWithRightFunction(values[0]);
+    let protocolB = await searchWithRightFunction(values[1]);
+    if (protocolA && protocolB) {
+        let result = await compareProtocolAToProtocolB(protocolA[0], protocolB[0]);
+        await ctx.reply(
+            `✅ TADAA!\n\n`+
+            `The new price of ${protocolA.name} is <b>${result[0].toFixed(4)}$</b>\n` +
+            `That's a <b>x${result[1].toFixed(3)}</b>! ${result[1].toFixed(3)>1 ? "GREAT!" : "SAD STORY..."}`,
+            { parse_mode: "HTML" }
+        );
+    }
+}
+
+async function decideCommandAndReplicate(command, ctx) {
+    let values = command.split(" ");
+    values.shift();
+    if (command.includes("searchProtocol")) {
+        await commandSearchProtocol(ctx, values);
+    } else if (command.includes("compareProtocols")) {
+        await commandCompareProtocols(ctx, values);
+    } else if (command.includes("tvlChart")) {
+        await commandTvlChart(ctx, values);
+    } else if (command.includes("performersChart")) {
+        await commandPerformersChart(ctx, values);
+    } else if (command.includes("ratioChart")) {
+        await commandRatioChart(ctx, values);
+    } else {
+        await ctx.reply("🥲 Whoops, something went wrong!.");
+    }
+}
 
 async function showMenu(ctx) {
     await ctx.reply(
@@ -84,7 +135,7 @@ async function showHistory(conversation, ctx) {
         );
         if (commandIndex) {
             await ctx.reply(`⚙️ Replicating command...`);
-            // TODO: replicate command
+            await decideCommandAndReplicate(ctx.session.commandHistory.value[commandIndex - 1], ctx);
         }
         await ctx.reply("That's it! Press /menu to do something else");
     } else {
@@ -119,7 +170,10 @@ function addCommandToHistory(ctx, command, values) {
     values = values.map(
         value => typeof value == "string" ? value.replace(" ", "") : value
     );
-    ctx.session.commandHistory.value.push(command + " " + values.join(" "));
+    let commandString = `${command} ${values.join(" ")}`;
+    if (!ctx.session.commandHistory.value.includes(commandString)) {
+        ctx.session.commandHistory.value.push(commandString);
+    }
 }
 
 function getSingleInfo(name, data, ratio) {
@@ -458,14 +512,5 @@ async function getRatioChart(conversation, ctx) {
     await ctx.reply("That's it! Press /menu to do something else");
     return;
 }
-
-bot.command("start", async (ctx) => await ctx.reply(
-    "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
-));
-bot.command("menu", async (ctx) => await showMenu(ctx) );
-
-bot.api.setMyCommands([
-    { command: "menu", description: "Show the main menu" },
-])
 
 bot.start();
