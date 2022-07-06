@@ -75,13 +75,23 @@ async function commandCompareProtocols(ctx, values) {
     let protocolB = await searchWithRightFunction(values[1]);
     if (protocolA && protocolB) {
         let result = await compareProtocolAToProtocolB(protocolA[0], protocolB[0]);
-        await ctx.reply(
-            `✅ TADAA!\n\n`+
-            `The new price of ${protocolA.name} is <b>${result[0].toFixed(4)}$</b>\n` +
-            `That's a <b>x${result[1].toFixed(3)}</b>! ${result[1].toFixed(3)>1 ? "GREAT!" : "SAD STORY..."}`,
-            { parse_mode: "HTML" }
-        );
+        await printCompareResults(ctx, protocolA, result);
     }
+}
+
+async function commandTvlChart(ctx, values) {
+    let buffer = await getFirstTVLProtocolsChart(values[0], values[1]);
+    await ctx.replyWithPhoto(new InputFile(buffer))
+}
+
+async function commandPerformersChart(ctx, values) {
+    let buffer = await getTopPerformersChart(values[0], values[1], values[2], values[3], values[4]);
+    await ctx.replyWithPhoto(new InputFile(buffer))
+}
+
+async function commandRatioChart(ctx, values) {
+    let buffer = await getBestRatioChart(values[0], values[1], values[2]);
+    await ctx.replyWithPhoto(new InputFile(buffer))
 }
 
 async function decideCommandAndReplicate(command, ctx) {
@@ -289,6 +299,15 @@ async function searchProtocol(conversation, ctx) {
     return;
 }
 
+async function printCompareResults(ctx, protocolA, result) {
+    await ctx.reply(
+        `✅ TADAA!\n\n`+
+        `The new price of ${protocolA.name} is <b>${result[0].toFixed(4)}$</b>\n` +
+        `That's a <b>x${result[1].toFixed(3)}</b>! ${result[1].toFixed(3)>1 ? "GREAT!" : "SAD STORY..."}`,
+        { parse_mode: "HTML" }
+    );
+}
+
 async function compareProtocols(conversation, ctx) {
     await ctx.deleteMessage();
     await ctx.reply("📝 Send the name (or symbol) of the first protocol");
@@ -300,12 +319,7 @@ async function compareProtocols(conversation, ctx) {
             await ctx.reply("🤯 Making big maths...");
             let result = await compareProtocolAToProtocolB(protocolA, protocolB)
             if (result[0] && result[1]) {
-                await ctx.reply(
-                    `✅ TADAA!\n\n`+
-                    `The new price of ${protocolA.name} is <b>${result[0].toFixed(4)}$</b>\n` +
-                    `That's a <b>x${result[1].toFixed(3)}</b>! ${result[1].toFixed(3)>1 ? "GREAT!" : "SAD STORY..."}`,
-                    { parse_mode: "HTML" }
-                );
+                await printCompareResults(ctx, protocolA, result)
                 addCommandToHistory(ctx, "/compareProtocols", [protocolA.name, protocolB.name])
             }
             else {
