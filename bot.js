@@ -8,6 +8,7 @@ const {
     getTopPerformersChart,
     getBestRatioChart,
 } = require('./utils.js')
+
 const { Bot, session, InputFile, Keyboard } = require("grammy");
 const { Menu } = require("@grammyjs/menu");
 const { conversations, createConversation } = require("@grammyjs/conversations");
@@ -31,19 +32,22 @@ bot.use(session({
 
 bot.use(conversations());
 
-bot.use(createConversation(deleteHistory));
 bot.use(createConversation(searchProtocol));
 bot.use(createConversation(compareProtocols));
 bot.use(createConversation(getFirstTVLChart));
 bot.use(createConversation(getPerformersChart));
 bot.use(createConversation(getRatioChart));
+bot.use(createConversation(showHistory));
+bot.use(createConversation(deleteHistory));
 
 const menu = new Menu("main-menu", { autoAnswer: false })
-  .text("🔎 Search Protocol", async (ctx) => await ctx.conversation.enter("searchProtocol")).row()
-  .text("➗ Make a comparison", async (ctx) => await ctx.conversation.enter("compareProtocols")).row()
-  .text("🏆 Get Chart #1", async (ctx) => await ctx.conversation.enter("getFirstTVLChart")).row()
-  .text("📈 Get Chart #2", async (ctx) => await ctx.conversation.enter("getPerformersChart")).row()
-  .text("💎 Get Chart #3", async (ctx) => await ctx.conversation.enter("getRatioChart"))
+    .text("🔎 Search Protocol", async (ctx) => await ctx.conversation.enter("searchProtocol")).row()
+    .text("➗ Make a comparison", async (ctx) => await ctx.conversation.enter("compareProtocols")).row()
+    .text("🏆 Get Chart #1", async (ctx) => await ctx.conversation.enter("getFirstTVLChart")).row()
+    .text("📈 Get Chart #2", async (ctx) => await ctx.conversation.enter("getPerformersChart")).row()
+    .text("💎 Get Chart #3", async (ctx) => await ctx.conversation.enter("getRatioChart")).row()
+    .text("🕵️ Show history", async (ctx) => await ctx.conversation.enter("showHistory")).row()
+    .text("🗑️ Delete history", async (ctx) => await ctx.conversation.enter("deleteHistory"))
 
 bot.use(menu);
 
@@ -54,34 +58,68 @@ async function showMenu(ctx) {
         `➗ Get price of protocol A with \nmcap/tvl ratio of protocol B\n`+
         `🏆 Get top n protocols for TVL\n`+
         `📈 Get top n performers/losers of last day/week\n`+
-        `💎 Get top n protocols with best \nmcap/tvl or fdv/tvl weighing mcap/fdv\n`,
+        `💎 Get top n protocols with best \nmcap/tvl or fdv/tvl weighing mcap/fdv\n`+
+        '🕵️ See your previous commands and replicate them\n'+
+        '🗑️ Delete your command history\n',
         { reply_markup: menu }
     );
 }
 
-async function showHistory(ctx) {
-    await ctx.reply(
-        `<b>Command history:</b>\n`+
-        `${ctx.session.commandHistory.value}`,
-        { parse_mode: "HTML" }
-    );
+async function showHistory(conversation, ctx) {
+    await ctx.deleteMessage();
+    if (ctx.session.commandHistory.value.length) {
+        await ctx.reply(
+            `<b>Command history:</b>\n\n`+
+            ctx.session.commandHistory.value.map((command, index) => `${index + 1}. ${command}`).join("\n"),
+            { parse_mode: "HTML" }
+        );
+        await ctx.reply(
+            `<b>🔎 Which command do you want to replicate?</b>\n`+
+            `Type the number of the command you want to replicate.`,
+            { parse_mode: "HTML" }
+        )
+        const commandIndex = await getNumberOrCancel(
+            number => number > 0 && number <= ctx.session.commandHistory.value.length,
+            conversation, ctx
+        );
+        if (commandIndex) {
+            await ctx.reply(`⚙️ Replicating command...`);
+            // TODO: replicate command
+        }
+        await ctx.reply("That's it! Press /menu to do something else");
+    } else {
+        await ctx.reply("No commands in history yet. Press /menu to do something else");
+    }
+    return;
 }
 
 async function deleteHistory(conversation, ctx) {
-    await replyWithKeyboard(
-        ctx, 
-        "Are you sure you want to delete the history?", 
-        new Keyboard().text("Yes").text("No")
-    )
-    const { message } = await conversation.wait();
-    if (message.text == "Yes") {
-        ctx.session.commandHistory.value = [];
-        await ctx.reply("History cleaned ✅");
-    }
-    else {
-        await ctx.reply("History not cleaned 🏳️");
+    await ctx.deleteMessage();
+    if (ctx.session.commandHistory.value.length) {
+        await replyWithKeyboard(
+            ctx, 
+            "Are you sure you want to delete the history?", 
+            new Keyboard().text("Yes").text("No")
+        )
+        const { message } = await conversation.wait();
+        if (message.text == "Yes") {
+            ctx.session.commandHistory.value = [];
+            await ctx.reply("History cleaned ✅");
+        }
+        else {
+            await ctx.reply("History not cleaned 🏳️");
+        }
+    } else {
+        await ctx.reply("Your history is already empty. Press /menu to do something else");
     }
     return
+}
+
+function addCommandToHistory(ctx, command, values) {
+    values = values.map(
+        value => typeof value == "string" ? value.replace(" ", "") : value
+    );
+    ctx.session.commandHistory.value.push(command + " " + values.join(" "));
 }
 
 function getSingleInfo(name, data, ratio) {
@@ -191,7 +229,7 @@ async function searchProtocol(conversation, ctx) {
     let protocol = await tryFindingProtocolOrCancel(conversation, ctx) 
     if (protocol) {
         await printInfoProtocol(ctx, protocol)
-        ctx.session.commandHistory.value.push("/search-protocol " + protocol.name + "\n")
+        addCommandToHistory(ctx, "/searchProtocol", [protocol.name])
     }
     await ctx.reply("That's it! Press /menu to do something else");
     return;
@@ -214,6 +252,7 @@ async function compareProtocols(conversation, ctx) {
                     `That's a <b>x${result[1].toFixed(3)}</b>! ${result[1].toFixed(3)>1 ? "GREAT!" : "SAD STORY..."}`,
                     { parse_mode: "HTML" }
                 );
+                addCommandToHistory(ctx, "/compareProtocols", [protocolA.name, protocolB.name])
             }
             else {
                 await ctx.reply("🥲 Ooops, something went wrong. Probably we couldn't find the price of one of the protocols.");
@@ -267,7 +306,10 @@ async function getFirstTVLChart(conversation, ctx) {
         .text("25").text("30").text("35").row()
         .text("40").text("45").text("50")
     await replyWithKeyboard(ctx, question, numberKeyboard)
-    let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
+    let topN = await getNumberOrCancel(
+        number => number >= 10 && number <= 50, 
+        conversation, ctx
+    )
     if (topN) {
         const question = 
             "🥸 Chose the type of the chart:\n\n"+
@@ -277,11 +319,15 @@ async function getFirstTVLChart(conversation, ctx) {
         const numberKeyboard = new Keyboard()
             .text("1").text("2").text("3")
         await replyWithKeyboard(ctx, question, numberKeyboard)
-        let type = await getNumberOrCancel(number => number >= 1 && number <= 3, conversation, ctx)
+        let type = await getNumberOrCancel(
+            number => number >= 1 && number <= 3, 
+            conversation, ctx
+        )
         if (type) {
             await ctx.reply("🖌️ Drawing your nice chart...");
             let buffer = await getFirstTVLProtocolsChart(topN, chartType[type]);
             await ctx.replyWithPhoto(new InputFile(buffer))
+            addCommandToHistory(ctx, "/tvlChart", [topN, chartType[type]])
         }
     }
     await ctx.reply("That's it! Press /menu to do something else");
@@ -296,7 +342,10 @@ async function getPerformersChart(conversation, ctx) {
     const numberKeyboard = new Keyboard()
         .text("50").text("100")
     await replyWithKeyboard(ctx, question, numberKeyboard)
-    let firstN = await getNumberOrCancel(number => number == 50 || number == 100, conversation, ctx)
+    let firstN = await getNumberOrCancel(
+        number => number == 50 || number == 100, 
+        conversation, ctx
+    )
     if (firstN) {
         const question = 
             "❓ How many protocols do you want in the chart?\n\n"+
@@ -306,7 +355,10 @@ async function getPerformersChart(conversation, ctx) {
             .text("25").text("30").text("35").row()
             .text("40").text("45").text("50")
         await replyWithKeyboard(ctx, question, numberKeyboard)
-        let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
+        let topN = await getNumberOrCancel(
+            number => number >= 10 && number <= 50, 
+            conversation, ctx
+        )
         if (topN) {
             const question =
                 "❓ Do you want the best or the worst performers?\n\n"+
@@ -314,7 +366,10 @@ async function getPerformersChart(conversation, ctx) {
             const numberKeyboard = new Keyboard()
                 .text("1 - Best").text("2 - Worst")
             await replyWithKeyboard(ctx, question, numberKeyboard)
-            let best = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
+            let best = await getNumberOrCancel(
+                number => number == 1 || number == 2, 
+                conversation, ctx
+            )
             if (best) {
                 best == 1 ? best = true : best = false
                 const question =
@@ -323,7 +378,10 @@ async function getPerformersChart(conversation, ctx) {
                 const numberKeyboard = new Keyboard()
                     .text("1 - Day").text("2 - Week")
                 await replyWithKeyboard(ctx, question, numberKeyboard)
-                let day = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
+                let day = await getNumberOrCancel(
+                    number => number == 1 || number == 2, 
+                    conversation, ctx
+                )
                 if (day) {
                     day == 1 ? day = true : day = false
                     const question = 
@@ -334,11 +392,15 @@ async function getPerformersChart(conversation, ctx) {
                     const numberKeyboard = new Keyboard()
                         .text("1").text("2").text("3")
                     await replyWithKeyboard(ctx, question, numberKeyboard)
-                    let type = await getNumberOrCancel(number => number >= 1 && number <= 3, conversation, ctx)
+                    let type = await getNumberOrCancel(
+                        number => number >= 1 && number <= 3, 
+                        conversation, ctx
+                    )
                     if (type) {
                         await ctx.reply("🖌️ Drawing your nice chart...");
                         let buffer = await getTopPerformersChart(firstN, topN, best, day, chartType[type]);
                         await ctx.replyWithPhoto(new InputFile(buffer))
+                        addCommandToHistory(ctx, "/performersChart", [topN, best, day, chartType[type]])
                     }
                 }
             }
@@ -356,7 +418,10 @@ async function getRatioChart(conversation, ctx) {
     const numberKeyboard = new Keyboard()
         .text("50").text("100")
     await replyWithKeyboard(ctx, question, numberKeyboard)
-    let firstN = await getNumberOrCancel(number => number == 50 || number == 100, conversation, ctx)
+    let firstN = await getNumberOrCancel(
+        number => number == 50 || number == 100, 
+        conversation, ctx
+    )
     if (firstN) {
         const question = 
             "❓ How many protocols do you want in the chart?\n\n"+
@@ -366,7 +431,10 @@ async function getRatioChart(conversation, ctx) {
             .text("25").text("30").text("35").row()
             .text("40").text("45").text("50")
         await replyWithKeyboard(ctx, question, numberKeyboard)
-        let topN = await getNumberOrCancel(number => number >= 10 && number <= 50, conversation, ctx)
+        let topN = await getNumberOrCancel(
+            number => number >= 10 && number <= 50, 
+            conversation, ctx
+        )
         if (topN) {
             const question =
                 "❓ Do you wanna consider Mcap or FDV?\n\n"+
@@ -374,12 +442,16 @@ async function getRatioChart(conversation, ctx) {
             const numberKeyboard = new Keyboard()
                 .text("1 - Mcap").text("2 - FDV")
             await replyWithKeyboard(ctx, question, numberKeyboard)
-            let mcap = await getNumberOrCancel(number => number == 1 || number == 2, conversation, ctx)
+            let mcap = await getNumberOrCancel(
+                number => number == 1 || number == 2,
+                conversation, ctx
+            )
             if (mcap) {
                 mcap == 1 ? mcap = true : mcap = false
                 await ctx.reply("🖌️ Drawing your nice chart...");
                 let buffer = await getBestRatioChart(firstN, topN, mcap);
                 await ctx.replyWithPhoto(new InputFile(buffer))
+                addCommandToHistory(ctx, "/ratioChart", [firstN, topN, mcap])
             }
         }
     }
@@ -391,8 +463,6 @@ bot.command("start", async (ctx) => await ctx.reply(
     "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
 ));
 bot.command("menu", async (ctx) => await showMenu(ctx) );
-bot.command("history", async (ctx) => await showHistory(ctx) );
-bot.command("deleteHistory", async (ctx) => await ctx.conversation.enter("deleteHistory") );
 
 bot.api.setMyCommands([
     { command: "menu", description: "Show the main menu" },
