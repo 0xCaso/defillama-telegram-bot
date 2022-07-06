@@ -293,14 +293,17 @@ async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
     let response = await axios.get(
         `https://api.coingecko.com/api/v3/simple/price?ids=${protocolAData.gecko_id}&vs_currencies=usd`
     )
-    // TODO: CHECK IF USD FIELD IS OK
-    const tokenAPrice = response.data[protocolAData.gecko_id].usd
+    const tokenAPrice = response.data[protocolAData.gecko_id].usd ?? undefined
     // calculate change in price and percentage change
-    const tokenBMcapTvl = tokenBMcap / tokenBTvl
-    const tokenACirculating = tokenAMcap / tokenAPrice
-    const tokenAPriceWithTokenBMcapTvl = (tokenBMcapTvl * tokenATvl) / tokenACirculating
-    const tokenAPriceChange = tokenAPriceWithTokenBMcapTvl / tokenAPrice
-    return [tokenAPriceWithTokenBMcapTvl, tokenAPriceChange]
+    if (tokenAPrice) {
+        const tokenBMcapTvl = tokenBMcap / tokenBTvl
+        const tokenACirculating = tokenAMcap / tokenAPrice
+        const tokenAPriceWithTokenBMcapTvl = (tokenBMcapTvl * tokenATvl) / tokenACirculating
+        const tokenAPriceChange = tokenAPriceWithTokenBMcapTvl / tokenAPrice
+        return [tokenAPriceWithTokenBMcapTvl, tokenAPriceChange]
+    } else {
+        return [0, 0]
+    }
 }
 
 async function getFirstTVLProtocolsChart(_n, _type) {
