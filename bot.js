@@ -24,7 +24,7 @@ const chartType = {
 // because of a conversation plugin bugged
 //
 // previousCommand is used in order to don't show
-// menu 2 times
+// menu 2 times, generating bugs
 bot.use(session({
     initial: () => ({
         commandHistory: { value: [] },
@@ -42,35 +42,19 @@ bot.use(createConversation(getRatioChart));
 bot.use(createConversation(showHistory));
 bot.use(createConversation(deleteHistory));
 
+async function fireCommand(ctx, command) {
+    await ctx.conversation.enter(command)
+    ctx.session.previousCommand.value = "/" + command
+}
+
 const menu = new Menu("main-menu", { autoAnswer: false })
-    .text("🔎 Search Protocol", async (ctx) => { 
-        await ctx.conversation.enter("searchProtocol")
-        ctx.session.previousCommand.value = "/searchProtocol"
-    }).row()
-    .text("➗ Make a comparison", async (ctx) => { 
-        await ctx.conversation.enter("compareProtocols")
-        ctx.session.previousCommand.value = "/compareProtocols"
-    }).row()
-    .text("🏆 Get Chart #1", async (ctx) => {
-        await ctx.conversation.enter("getFirstTVLChart")
-        ctx.session.previousCommand.value = "/tvlChart"
-    }).row()
-    .text("📈 Get Chart #2", async (ctx) => {
-        await ctx.conversation.enter("getPerformersChart")
-        ctx.session.previousCommand.value = "/performersChart"
-    }).row()
-    .text("💎 Get Chart #3", async (ctx) => {
-        await ctx.conversation.enter("getRatioChart")
-        ctx.session.previousCommand.value = "/ratioChart"
-    }).row()
-    .text("🕵️ Show history", async (ctx) => {
-        await ctx.conversation.enter("showHistory")
-        ctx.session.previousCommand.value = "/showHistory"
-    }).row()
-    .text("🗑️ Delete history", async (ctx) => {
-        await ctx.conversation.enter("deleteHistory")
-        ctx.session.previousCommand.value = "/deleteHistory"
-    })
+    .text("🔎 Search Protocol", async (ctx) => { await fireCommand(ctx, "searchProtocol") }).row()
+    .text("➗ Make a comparison", async (ctx) => { await fireCommand(ctx, "compareProtocols") }).row()
+    .text("🏆 Get Chart #1", async (ctx) => { await fireCommand(ctx, "getFirstTVLChart") }).row()
+    .text("📈 Get Chart #2", async (ctx) => { await fireCommand(ctx, "getPerformersChart") }).row()
+    .text("💎 Get Chart #3", async (ctx) => { await fireCommand(ctx, "getRatioChart") }).row()
+    .text("🕵️ Show history", async (ctx) => { await fireCommand(ctx, "showHistory") }).row()
+    .text("🗑️ Delete history", async (ctx) => { await fireCommand(ctx, "deleteHistory") })
 
 bot.use(menu);
 
@@ -85,9 +69,9 @@ bot.command("menu", async (ctx) => {
 });
 bot.command("searchProtocol", async (ctx) => await commandSearchProtocol(ctx) );
 bot.command("compareProtocols", async (ctx) => await commandCompareProtocols(ctx) );
-bot.command("tvlChart", async (ctx) => await commandTvlChart(ctx) );
-bot.command("performersChart", async (ctx) => await commandPerformersChart(ctx) );
-bot.command("ratioChart", async (ctx) => await commandRatioChart(ctx) );
+bot.command("getFirstTVLChart", async (ctx) => await commandTvlChart(ctx) );
+bot.command("getPerformersChart", async (ctx) => await commandPerformersChart(ctx) );
+bot.command("getRatioChart", async (ctx) => await commandRatioChart(ctx) );
 
 bot.api.setMyCommands([
     { command: "menu", description: "Show the main menu" },
@@ -131,11 +115,11 @@ async function decideCommandAndReplicate(command, ctx) {
         await commandSearchProtocol(ctx, values);
     } else if (command.includes("compareProtocols")) {
         await commandCompareProtocols(ctx, values);
-    } else if (command.includes("tvlChart")) {
+    } else if (command.includes("getFirstTVLChart")) {
         await commandTvlChart(ctx, values);
-    } else if (command.includes("performersChart")) {
+    } else if (command.includes("getPerformersChart")) {
         await commandPerformersChart(ctx, values);
-    } else if (command.includes("ratioChart")) {
+    } else if (command.includes("getRatioChart")) {
         await commandRatioChart(ctx, values);
     } else {
         await ctx.reply("🥲 Whoops, something went wrong!.");
@@ -197,10 +181,10 @@ async function deleteHistory(conversation, ctx) {
         const { message } = await conversation.wait();
         if (message.text == "Yes") {
             ctx.session.commandHistory.value = [];
-            await ctx.reply("History cleaned ✅");
+            await ctx.reply("History cleaned 🗑️. Press /menu to do something else");
         }
         else {
-            await ctx.reply("History not cleaned 🏳️");
+            await ctx.reply("History not cleaned 🏳️. Press /menu to do something else");
         }
     } else {
         await ctx.reply("Your history is already empty. Press /menu to do something else");
@@ -211,6 +195,9 @@ async function deleteHistory(conversation, ctx) {
 function addCommandToHistory(ctx, command, values) {
     values = values.map(
         value => typeof value == "string" ? value.replace(" ", "") : value
+    );
+    values = values.map(
+        value => value === true ? 1 : value === false ? 0 : value
     );
     let commandString = `${command} ${values.join(" ")}`;
     if (!ctx.session.commandHistory.value.includes(commandString)) {
@@ -427,7 +414,7 @@ async function getFirstTVLChart(conversation, ctx) {
             await ctx.reply("🖌️ Drawing your nice chart...");
             let buffer = await getFirstTVLProtocolsChart(topN, chartType[type]);
             await ctx.replyWithPhoto(new InputFile(buffer))
-            addCommandToHistory(ctx, "/tvlChart", [topN, chartType[type]])
+            addCommandToHistory(ctx, "/getFirstTVLChart", [topN, chartType[type]])
         }
     }
     await ctx.reply("That's it! Press /menu to do something else");
@@ -500,7 +487,7 @@ async function getPerformersChart(conversation, ctx) {
                         await ctx.reply("🖌️ Drawing your nice chart...");
                         let buffer = await getTopPerformersChart(firstN, topN, best, day, chartType[type]);
                         await ctx.replyWithPhoto(new InputFile(buffer))
-                        addCommandToHistory(ctx, "/performersChart", [firstN, topN, best, day, chartType[type]])
+                        addCommandToHistory(ctx, "/getPerformersChart", [firstN, topN, best, day, chartType[type]])
                     }
                 }
             }
@@ -551,7 +538,7 @@ async function getRatioChart(conversation, ctx) {
                 await ctx.reply("🖌️ Drawing your nice chart...");
                 let buffer = await getBestRatioChart(firstN, topN, mcap);
                 await ctx.replyWithPhoto(new InputFile(buffer))
-                addCommandToHistory(ctx, "/ratioChart", [firstN, topN, mcap])
+                addCommandToHistory(ctx, "/getRatioChart", [firstN, topN, mcap])
             }
         }
     }

@@ -167,10 +167,10 @@ async function getBestOrWorseOfFirstNTVL_LastDayOrWeek(_n, _firstN, _best, _day)
     let _apiLabels, _apiData
     let protocols = await getProtocols();
     let change
-    _day ? change = "change_1d" : change = "change_7d"
+    parseInt(_day) ? change = "change_1d" : change = "change_7d"
     protocols = protocols.filter(p => p[change] != null)
     let selected = protocols.slice(0, _firstN)
-    _best ?
+    parseInt(_best) ?
         selected = selected.sort((a, b) => b[change] - a[change])
     :
         selected = selected.sort((a, b) => a[change] - b[change])  
@@ -218,7 +218,7 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
             }
         })
     )
-    _mcap ? ( num = "mcap", den = "tvl" ) : ( num = "fdv", den = "tvl" )
+    parseInt(_mcap) ? ( num = "mcap", den = "tvl" ) : ( num = "fdv", den = "tvl" )
     selected = selected.sort((a, b) => a[num] / a[den] - b[num] / b[den])
     selected = selected.slice(0, _n)
     let data = []
