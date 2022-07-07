@@ -10,8 +10,8 @@ const {
 } = require('./utils.js')
 
 const { Bot, session, InputFile, Keyboard } = require("grammy");
-const { Menu } = require("@grammyjs/menu");
 const { conversations, createConversation } = require("@grammyjs/conversations");
+const { MenuTemplate, MenuMiddleware } = require("grammy-inline-menu");
 
 const bot = new Bot(process.env.TELEGRAM_API);
 const chartType = {
@@ -47,23 +47,75 @@ async function fireCommand(ctx, command) {
     ctx.session.previousCommand.value = "/" + command
 }
 
-const menu = new Menu("main-menu", { autoAnswer: false })
-    .text("🔎 Search Protocol", async (ctx) => { await fireCommand(ctx, "searchProtocol") }).row()
-    .text("➗ Make a comparison", async (ctx) => { await fireCommand(ctx, "compareProtocols") }).row()
-    .text("🏆 Get Chart #1", async (ctx) => { await fireCommand(ctx, "getFirstTVLChart") }).row()
-    .text("📈 Get Chart #2", async (ctx) => { await fireCommand(ctx, "getPerformersChart") }).row()
-    .text("💎 Get Chart #3", async (ctx) => { await fireCommand(ctx, "getRatioChart") }).row()
-    .text("🕵️ Show history", async (ctx) => { await fireCommand(ctx, "showHistory") }).row()
-    .text("🗑️ Delete history", async (ctx) => { await fireCommand(ctx, "deleteHistory") })
+const menuHTML =
+    `Please chose an option from the menu:\n\n`+
+    `🔎 Search a DeFi protocol\n`+
+    `➗ Get price of protocol A with mcap/tvl ratio of protocol B\n`+
+    `🏆 Get top n protocols for TVL\n`+
+    `📈 Get top n performers/losers of last day/week\n`+
+    `💎 Get top n protocols with best mcap/tvl or fdv/tvl w/ mcap/fdv\n`+
+    '🕵️ See your previous commands and replicate them\n'+
+    '🗑️ Delete your command history\n'
 
-bot.use(menu);
+const menu = new MenuTemplate(() => menuHTML)
+
+menu.interact('🔎', '1', {
+	do: async ctx => {
+		await fireCommand(ctx, "searchProtocol")
+		return false
+	}
+})
+menu.interact('➗', '2', {
+    joinLastRow: true,
+	do: async ctx => {
+		await fireCommand(ctx, "compareProtocols")
+		return false
+	}
+})
+menu.interact('🏆', '3', {
+	do: async ctx => {
+		await fireCommand(ctx, "getFirstTVLChart")
+		return false
+	}
+})
+menu.interact('📈', '4', {
+    joinLastRow: true,
+	do: async ctx => {
+		await fireCommand(ctx, "getPerformersChart")
+		return false
+	}
+})
+menu.interact('💎', '5', {
+    joinLastRow: true,
+	do: async ctx => {
+		await fireCommand(ctx, "getRatioChart")
+		return false
+	}
+})
+menu.interact('🕵️', '6', {
+	do: async ctx => {
+		await fireCommand(ctx, "showHistory")
+		return false
+	}
+})
+menu.interact('🗑️', '7', {
+    joinLastRow: true,
+	do: async ctx => {
+		await fireCommand(ctx, "deleteHistory")
+		return false
+	}
+})
+
+const menuMiddleware = new MenuMiddleware('/', menu)
+
+bot.use(menuMiddleware)
 
 bot.command("start", async (ctx) => await ctx.reply(
     "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
 ));
 bot.command("menu", async (ctx) => {
     if (ctx.session.previousCommand.value != "/menu") {
-        await showMenu(ctx)
+        menuMiddleware.replyToContext(ctx)
         ctx.session.previousCommand.value = "/menu"
     }
 });
@@ -124,22 +176,6 @@ async function decideCommandAndReplicate(command, ctx) {
     } else {
         await ctx.reply("🥲 Whoops, something went wrong!.");
     }
-}
-
-async function showMenu(ctx) {
-    const menuHTML =
-        `Please chose an option from the menu:\n\n`+
-        `🔎 Search a DeFi protocol\n`+
-        `➗ Get price of protocol A with \nmcap/tvl ratio of protocol B\n`+
-        `🏆 Get top n protocols for TVL\n`+
-        `📈 Get top n performers/losers of last day/week\n`+
-        `💎 Get top n protocols with best \nmcap/tvl or fdv/tvl weighing mcap/fdv\n`+
-        '🕵️ See your previous commands and replicate them\n'+
-        '🗑️ Delete your command history\n'
-    await ctx.reply(
-        menuHTML,
-        { reply_markup: menu }
-    );
 }
 
 async function showHistory(conversation, ctx) {
