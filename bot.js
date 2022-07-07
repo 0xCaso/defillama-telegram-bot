@@ -22,9 +22,13 @@ const chartType = {
 
 // commandHistory value is wrapped in an object
 // because of a conversation plugin bugged
+//
+// previousCommand is used in order to don't show
+// menu 2 times
 bot.use(session({
     initial: () => ({
-        commandHistory: { value: [] }
+        commandHistory: { value: [] },
+        previousCommand: { value: "" },
     }),
 }));
 
@@ -39,20 +43,46 @@ bot.use(createConversation(showHistory));
 bot.use(createConversation(deleteHistory));
 
 const menu = new Menu("main-menu", { autoAnswer: false })
-    .text("🔎 Search Protocol", async (ctx) => await ctx.conversation.enter("searchProtocol")).row()
-    .text("➗ Make a comparison", async (ctx) => await ctx.conversation.enter("compareProtocols")).row()
-    .text("🏆 Get Chart #1", async (ctx) => await ctx.conversation.enter("getFirstTVLChart")).row()
-    .text("📈 Get Chart #2", async (ctx) => await ctx.conversation.enter("getPerformersChart")).row()
-    .text("💎 Get Chart #3", async (ctx) => await ctx.conversation.enter("getRatioChart")).row()
-    .text("🕵️ Show history", async (ctx) => await ctx.conversation.enter("showHistory")).row()
-    .text("🗑️ Delete history", async (ctx) => await ctx.conversation.enter("deleteHistory"))
+    .text("🔎 Search Protocol", async (ctx) => { 
+        await ctx.conversation.enter("searchProtocol")
+        ctx.session.previousCommand.value = "/searchProtocol"
+    }).row()
+    .text("➗ Make a comparison", async (ctx) => { 
+        await ctx.conversation.enter("compareProtocols")
+        ctx.session.previousCommand.value = "/compareProtocols"
+    }).row()
+    .text("🏆 Get Chart #1", async (ctx) => {
+        await ctx.conversation.enter("getFirstTVLChart")
+        ctx.session.previousCommand.value = "/tvlChart"
+    }).row()
+    .text("📈 Get Chart #2", async (ctx) => {
+        await ctx.conversation.enter("getPerformersChart")
+        ctx.session.previousCommand.value = "/performersChart"
+    }).row()
+    .text("💎 Get Chart #3", async (ctx) => {
+        await ctx.conversation.enter("getRatioChart")
+        ctx.session.previousCommand.value = "/ratioChart"
+    }).row()
+    .text("🕵️ Show history", async (ctx) => {
+        await ctx.conversation.enter("showHistory")
+        ctx.session.previousCommand.value = "/showHistory"
+    }).row()
+    .text("🗑️ Delete history", async (ctx) => {
+        await ctx.conversation.enter("deleteHistory")
+        ctx.session.previousCommand.value = "/deleteHistory"
+    })
 
 bot.use(menu);
 
 bot.command("start", async (ctx) => await ctx.reply(
     "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
 ));
-bot.command("menu", async (ctx) => await showMenu(ctx) );
+bot.command("menu", async (ctx) => {
+    if (ctx.session.previousCommand.value != "/menu") {
+        await showMenu(ctx)
+        ctx.session.previousCommand.value = "/menu"
+    }
+});
 bot.command("searchProtocol", async (ctx) => await commandSearchProtocol(ctx) );
 bot.command("compareProtocols", async (ctx) => await commandCompareProtocols(ctx) );
 bot.command("tvlChart", async (ctx) => await commandTvlChart(ctx) );
@@ -113,7 +143,7 @@ async function decideCommandAndReplicate(command, ctx) {
 }
 
 async function showMenu(ctx) {
-    await ctx.reply(
+    const menuHTML =
         `Please chose an option from the menu:\n\n`+
         `🔎 Search a DeFi protocol\n`+
         `➗ Get price of protocol A with \nmcap/tvl ratio of protocol B\n`+
@@ -121,7 +151,9 @@ async function showMenu(ctx) {
         `📈 Get top n performers/losers of last day/week\n`+
         `💎 Get top n protocols with best \nmcap/tvl or fdv/tvl weighing mcap/fdv\n`+
         '🕵️ See your previous commands and replicate them\n'+
-        '🗑️ Delete your command history\n',
+        '🗑️ Delete your command history\n'
+    await ctx.reply(
+        menuHTML,
         { reply_markup: menu }
     );
 }
@@ -468,7 +500,7 @@ async function getPerformersChart(conversation, ctx) {
                         await ctx.reply("🖌️ Drawing your nice chart...");
                         let buffer = await getTopPerformersChart(firstN, topN, best, day, chartType[type]);
                         await ctx.replyWithPhoto(new InputFile(buffer))
-                        addCommandToHistory(ctx, "/performersChart", [topN, best, day, chartType[type]])
+                        addCommandToHistory(ctx, "/performersChart", [firstN, topN, best, day, chartType[type]])
                     }
                 }
             }
