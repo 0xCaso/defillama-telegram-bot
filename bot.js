@@ -12,23 +12,34 @@ const {
 const { Bot, session, InputFile, Keyboard } = require("grammy");
 const { conversations, createConversation } = require("@grammyjs/conversations");
 const { MenuTemplate, MenuMiddleware } = require("grammy-inline-menu");
+const { run } = require("@grammyjs/runner");
+const { supabaseAdapter } = require("@grammyjs/storage-supabase");
+const { createClient } = require("@supabase/supabase-js");
 
 const bot = new Bot(process.env.TELEGRAM_API);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+//create storage
+const storage = supabaseAdapter({
+    supabase,
+    table: 'session', // the defined table name you want to use to store your session
+});
+
 const chartType = {
     1: "bar",
     2: "doughnut",
     3: "pie",
 }
-
 // commandHistory value is wrapped in an object
-// because of a conversation plugin bugged
+// because of a conversation plugin bug
 //
 // previousCommand is used in order to don't show
-// menu 2 times, generating bugs
+// menu 2 times, generating errors
 bot.use(session({
+    storage,
     initial: () => ({
         commandHistory: { value: [] },
         previousCommand: { value: "" },
+        counter: { value: 0 },
     }),
 }));
 
@@ -59,46 +70,46 @@ const menuHTML =
 
 const menu = new MenuTemplate(() => menuHTML)
 
-menu.interact('🔎', '1', {
+menu.interact('🔎 Search', '1', {
 	do: async ctx => {
 		await fireCommand(ctx, "searchProtocol")
 		return false
 	}
 })
-menu.interact('➗', '2', {
+menu.interact('➗ Comparison', '2', {
     joinLastRow: true,
 	do: async ctx => {
 		await fireCommand(ctx, "compareProtocols")
 		return false
 	}
 })
-menu.interact('🏆', '3', {
+menu.interact('🏆 TVL', '3', {
 	do: async ctx => {
 		await fireCommand(ctx, "getFirstTVLChart")
 		return false
 	}
 })
-menu.interact('📈', '4', {
+menu.interact('📈 Performers', '4', {
     joinLastRow: true,
 	do: async ctx => {
 		await fireCommand(ctx, "getPerformersChart")
 		return false
 	}
 })
-menu.interact('💎', '5', {
+menu.interact('💎 Ratio', '5', {
     joinLastRow: true,
 	do: async ctx => {
 		await fireCommand(ctx, "getRatioChart")
 		return false
 	}
 })
-menu.interact('🕵️', '6', {
+menu.interact('🕵️ History', '6', {
 	do: async ctx => {
 		await fireCommand(ctx, "showHistory")
 		return false
 	}
 })
-menu.interact('🗑️', '7', {
+menu.interact('🗑️ Clean', '7', {
     joinLastRow: true,
 	do: async ctx => {
 		await fireCommand(ctx, "deleteHistory")
@@ -110,9 +121,13 @@ const menuMiddleware = new MenuMiddleware('/', menu)
 
 bot.use(menuMiddleware)
 
-bot.command("start", async (ctx) => await ctx.reply(
-    "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
-));
+bot.command("start", async (ctx) => {
+    console.log("PREV: " + ctx.session.counter.value)
+    ctx.session.counter.value++
+    console.log("THEN: " + ctx.session.counter.value)
+    await ctx.reply(
+    "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu")
+});
 bot.command("menu", async (ctx) => {
     if (ctx.session.previousCommand.value != "/menu") {
         menuMiddleware.replyToContext(ctx)
@@ -582,4 +597,5 @@ async function getRatioChart(conversation, ctx) {
     return;
 }
 
-bot.start();
+bot.catch((err) => console.error(err));
+run(bot)

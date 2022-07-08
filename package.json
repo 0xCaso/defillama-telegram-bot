@@ -2,6 +2,10 @@
   "dependencies": {
     "@grammyjs/conversations": "^0.6.2",
     "@grammyjs/menu": "^1.1.2",
+    "@grammyjs/runner": "^1.0.3",
+    "@grammyjs/storage-free": "^2.0.0",
+    "@grammyjs/storage-supabase": "^2.0.0",
+    "@supabase/supabase-js": "^1.35.4",
     "axios": "^0.27.2",
     "chart.js": "^3.8.0",
     "chartjs-node-canvas": "^4.1.6",
