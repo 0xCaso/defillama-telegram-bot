@@ -146,6 +146,22 @@ function getColors(_n) {
     return colors;
 }
 
+async function getCurrentPriceFromCoingecko(_gecko_id) {
+    let response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${_gecko_id}&vs_currencies=usd`
+    )
+    let price = response.data[_gecko_id]?.usd ?? undefined
+    return price
+}
+
+async function getCurrentDataFromCoingecko(_gecko_id, _date = undefined) {
+    let response = await axios.get(
+        `https://api.coingecko.com/api/v3/coins/${_gecko_id}` +
+        (_date ? `/history?date=${_date}&localization=false` : "")
+    )
+    return response.data
+}
+
 async function getProtocols() {
     let response = await axios.get('https://api.llama.fi/protocols')
     let protocols = response.data;
@@ -183,9 +199,9 @@ async function getBestOrWorseOfFirstNTVL_LastDayOrWeek(_n, _firstN, _best, _day)
 async function getFDVFromCoingecko(_id) {
     // could die because of delistings or too many requests
     try {
-        let response = await axios.get(`https://api.coingecko.com/api/v3/coins/${_id}`)
-        let price = response.data.market_data.current_price.usd
-        let fdv = response.data.market_data.total_supply * price
+        let data = await getCurrentDataFromCoingecko(_id)
+        let price = data.market_data.current_price.usd
+        let fdv = data.market_data.total_supply * price
         return fdv
     } catch(err) {
         console.log("ERROR: Coingecko ded")
@@ -245,8 +261,8 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
         d[0], 
         d[1], 
         normalizeData(d[2], initRange, finalRange), 
-        d[3]]
-    )
+        d[3]
+    ])
     return data
 }
 
@@ -290,10 +306,7 @@ async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
     const tokenATvl = protocolAData.tvl
     const tokenBTvl = protocolBData.tvl
     // take price of protocol A from coingecko
-    let response = await axios.get(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${protocolAData.gecko_id}&vs_currencies=usd`
-    )
-    const tokenAPrice = response.data[protocolAData.gecko_id].usd ?? undefined
+    const tokenAPrice = await getCurrentPriceFromCoingecko(protocolAData.gecko_id)
     // calculate change in price and percentage change
     if (tokenAPrice) {
         const tokenBMcapTvl = tokenBMcap / tokenBTvl
@@ -302,6 +315,42 @@ async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
         const tokenAPriceChange = tokenAPriceWithTokenBMcapTvl / tokenAPrice
         return [tokenAPriceWithTokenBMcapTvl, tokenAPriceChange]
     } else {
+        return [0, 0]
+    }
+}
+
+// we could consider current mcap/fdv ratio
+async function fairPriceAtATHTVL(_protocolSlug) {
+    try {
+        // get history of TVL
+        let response = await axios.get(`https://api.llama.fi/protocol/${_protocolSlug}`)
+        let history = response.data;
+        const gecko_id = history.gecko_id;
+        let tvlHistory = history.tvl
+        const ATH_TVL = Math.max(...tvlHistory.map(h => h.totalLiquidityUSD))
+        let maxTvlDate = tvlHistory.find(h => h.totalLiquidityUSD == ATH_TVL).date
+        // convert date from unix format and prepare for coingecko query
+        maxTvlDate = new Date(maxTvlDate * 1000)
+        const maxTvlDateString = `${maxTvlDate.getDate()}-${maxTvlDate.getMonth() + 1}-${maxTvlDate.getFullYear()}`
+        // get history of Mcap and price
+        history = await getCurrentDataFromCoingecko(gecko_id, maxTvlDateString)
+        let mcap_at_ATH_TVL = history.market_data.market_cap.usd
+        // if mcap was unset at that time, we take current mcap
+        let currentData = await getCurrentDataFromCoingecko(gecko_id)
+        let current_price = currentData.market_data.current_price.usd
+        let new_price_multiplier, new_price
+        if (!mcap_at_ATH_TVL) {
+            let current_mcap = currentData.market_data.market_cap.usd
+            new_price_multiplier = ATH_TVL / current_mcap
+            new_price = new_price_multiplier * current_price
+        } else {
+            let price_at_ATH_TVL = history.market_data.current_price.usd
+            new_price_multiplier = ((ATH_TVL / mcap_at_ATH_TVL) * price_at_ATH_TVL) / current_price
+            new_price = new_price_multiplier * current_price
+        }
+        return [new_price, new_price_multiplier]
+    } catch(e) {
+        console.log(e)
         return [0, 0]
     }
 }
@@ -336,4 +385,5 @@ module.exports = {
     getFirstTVLProtocolsChart,
     getTopPerformersChart,
     getBestRatioChart,
+    fairPriceAtATHTVL,
 }

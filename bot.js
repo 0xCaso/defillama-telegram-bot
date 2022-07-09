@@ -7,6 +7,7 @@ const {
     getFirstTVLProtocolsChart,
     getTopPerformersChart,
     getBestRatioChart,
+    fairPriceAtATHTVL,
 } = require('./utils.js')
 
 const { Bot, session, InputFile, Keyboard } = require("grammy");
@@ -18,10 +19,9 @@ const { createClient } = require("@supabase/supabase-js");
 
 const bot = new Bot(process.env.TELEGRAM_API);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-//create storage
 const storage = supabaseAdapter({
     supabase,
-    table: 'session', // the defined table name you want to use to store your session
+    table: 'session',
 });
 
 const chartType = {
@@ -39,7 +39,6 @@ bot.use(session({
     initial: () => ({
         commandHistory: { value: [] },
         previousCommand: { value: "" },
-        counter: { value: 0 },
     }),
 }));
 
@@ -47,6 +46,7 @@ bot.use(conversations());
 
 bot.use(createConversation(searchProtocol));
 bot.use(createConversation(compareProtocols));
+bot.use(createConversation(fairPrice));
 bot.use(createConversation(getFirstTVLChart));
 bot.use(createConversation(getPerformersChart));
 bot.use(createConversation(getRatioChart));
@@ -58,73 +58,47 @@ async function fireCommand(ctx, command) {
     ctx.session.previousCommand.value = "/" + command
 }
 
-const menuHTML =
+function buildMenu() {
+    const menuHTML =
     `Please chose an option from the menu:\n\n`+
     `🔎 Search a DeFi protocol\n`+
     `➗ Get price of protocol A with mcap/tvl ratio of protocol B\n`+
+    `🚀 Get price of protocol if mcap == TVL when TVL was at ATH\n`+
     `🏆 Get top n protocols for TVL\n`+
     `📈 Get top n performers/losers of last day/week\n`+
     `💎 Get top n protocols with best mcap/tvl or fdv/tvl w/ mcap/fdv\n`+
     '🕵️ See your previous commands and replicate them\n'+
     '🗑️ Delete your command history\n'
 
-const menu = new MenuTemplate(() => menuHTML)
+    const menu = new MenuTemplate(() => menuHTML)
 
-menu.interact('🔎 Search', '1', {
-	do: async ctx => {
-		await fireCommand(ctx, "searchProtocol")
-		return false
-	}
-})
-menu.interact('➗ Comparison', '2', {
-    joinLastRow: true,
-	do: async ctx => {
-		await fireCommand(ctx, "compareProtocols")
-		return false
-	}
-})
-menu.interact('🏆 TVL', '3', {
-	do: async ctx => {
-		await fireCommand(ctx, "getFirstTVLChart")
-		return false
-	}
-})
-menu.interact('📈 Performers', '4', {
-    joinLastRow: true,
-	do: async ctx => {
-		await fireCommand(ctx, "getPerformersChart")
-		return false
-	}
-})
-menu.interact('💎 Ratio', '5', {
-    joinLastRow: true,
-	do: async ctx => {
-		await fireCommand(ctx, "getRatioChart")
-		return false
-	}
-})
-menu.interact('🕵️ History', '6', {
-	do: async ctx => {
-		await fireCommand(ctx, "showHistory")
-		return false
-	}
-})
-menu.interact('🗑️ Clean', '7', {
-    joinLastRow: true,
-	do: async ctx => {
-		await fireCommand(ctx, "deleteHistory")
-		return false
-	}
-})
+    function addMenuItem(text, command, joinLastRow = false) {
+        menu.interact(text, command, {
+            joinLastRow: joinLastRow,
+            do: async ctx => {
+                await fireCommand(ctx, command)
+                return false
+            }
+        })
+    }
 
-const menuMiddleware = new MenuMiddleware('/', menu)
+    addMenuItem('🔎 Search', 'searchProtocol');
+    addMenuItem('➗ Compare', 'compareProtocols', true);
+    addMenuItem('🚀 FairPrice', 'fairPrice', true);
+    addMenuItem('🏆 TVL', 'getFirstTVLChart');
+    addMenuItem('📈 Performers', 'getPerformersChart', true);
+    addMenuItem('💎 Ratio', 'getRatioChart', true);
+    addMenuItem('🕵️ History', 'showHistory');
+    addMenuItem('🗑️ Clean', 'deleteHistory', true);
+
+    return new MenuMiddleware('/', menu)
+}
+
+const menuMiddleware = buildMenu();
 
 bot.use(menuMiddleware)
 
 bot.command("start", async (ctx) => {
-    console.log("PREV: " + ctx.session.counter.value)
-    ctx.session.counter.value++
-    console.log("THEN: " + ctx.session.counter.value)
     await ctx.reply(
     "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu")
 });
@@ -136,6 +110,7 @@ bot.command("menu", async (ctx) => {
 });
 bot.command("searchProtocol", async (ctx) => await commandSearchProtocol(ctx) );
 bot.command("compareProtocols", async (ctx) => await commandCompareProtocols(ctx) );
+bot.command("fairPrice", async (ctx) => await commandFairPrice(ctx) );
 bot.command("getFirstTVLChart", async (ctx) => await commandTvlChart(ctx) );
 bot.command("getPerformersChart", async (ctx) => await commandPerformersChart(ctx) );
 bot.command("getRatioChart", async (ctx) => await commandRatioChart(ctx) );
@@ -157,6 +132,14 @@ async function commandCompareProtocols(ctx, values) {
     if (protocolA && protocolB) {
         let result = await compareProtocolAToProtocolB(protocolA[0], protocolB[0]);
         await printCompareResults(ctx, protocolA, result);
+    }
+}
+
+async function commandFairPrice(ctx, values) {
+    let protocol = await searchWithRightFunction(values[0]);
+    if (protocol) {
+        let result = await fairPriceAtATHTVL(protocol[0].slug);
+        await printCompareResults(ctx, protocol[0], result);
     }
 }
 
@@ -182,6 +165,8 @@ async function decideCommandAndReplicate(command, ctx) {
         await commandSearchProtocol(ctx, values);
     } else if (command.includes("compareProtocols")) {
         await commandCompareProtocols(ctx, values);
+    } else if (command.includes("fairPrice")) {
+        await commandFairPrice(ctx, values);
     } else if (command.includes("getFirstTVLChart")) {
         await commandTvlChart(ctx, values);
     } else if (command.includes("getPerformersChart")) {
@@ -244,6 +229,8 @@ async function deleteHistory(conversation, ctx) {
 }
 
 function addCommandToHistory(ctx, command, values) {
+    console.log("BEFORE")
+    console.log(ctx.session);
     values = values.map(
         value => typeof value == "string" ? value.replace(" ", "") : value
     );
@@ -254,6 +241,8 @@ function addCommandToHistory(ctx, command, values) {
     if (!ctx.session.commandHistory.value.includes(commandString)) {
         ctx.session.commandHistory.value.push(commandString);
     }
+    console.log("AFTER")
+    console.log(ctx.session);
 }
 
 function getSingleInfo(name, data, ratio) {
@@ -372,8 +361,8 @@ async function searchProtocol(conversation, ctx) {
 async function printCompareResults(ctx, protocolA, result) {
     await ctx.reply(
         `✅ TADAA!\n\n`+
-        `The new price of ${protocolA.name} is <b>${result[0].toFixed(4)}$</b>\n` +
-        `That's a <b>x${result[1].toFixed(3)}</b>! ${result[1].toFixed(3)>1 ? "GREAT!" : "SAD STORY..."}`,
+        `The new price of ${protocolA.name} is <b>$${result[0].toLocaleString()}</b>\n` +
+        `That's a <b>x${result[1].toFixed(4)}</b>! ${result[1].toFixed(4)>1 ? "GREAT!" : "SAD STORY..."}`,
         { parse_mode: "HTML" }
     );
 }
@@ -395,6 +384,25 @@ async function compareProtocols(conversation, ctx) {
             else {
                 await ctx.reply("🥲 Ooops, something went wrong. Probably we couldn't find the price of one of the protocols.");
             }
+        }
+    }
+    await ctx.reply("That's it! Press /menu to do something else");
+    return;
+}
+
+async function fairPrice(conversation, ctx) {
+    await ctx.deleteMessage();
+    await ctx.reply("📝 Send the name (ex: Trader Joe) or the symbol with dollar (ex: $JOE):");
+    let protocol = await tryFindingProtocolOrCancel(conversation, ctx)
+    if (protocol) {
+        await ctx.reply("🤯 Making big maths...");
+        let result = await fairPriceAtATHTVL(protocol.slug)
+        if (result[0] && result[1]) {
+            await printCompareResults(ctx, protocol, result)
+            addCommandToHistory(ctx, "/fairPrice", [protocol.name])
+        }
+        else {
+            await ctx.reply("🥲 Ooops, something went wrong. Probably we couldn't find the price of the protocol.");
         }
     }
     await ctx.reply("That's it! Press /menu to do something else");
