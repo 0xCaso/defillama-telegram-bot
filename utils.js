@@ -335,10 +335,10 @@ async function fairPriceAtATHTVL(_protocolSlug) {
         // get history of Mcap and price
         history = await getCurrentDataFromCoingecko(gecko_id, maxTvlDateString)
         let mcap_at_ATH_TVL = history.market_data.market_cap.usd
-        // if mcap was unset at that time, we take current mcap
         let currentData = await getCurrentDataFromCoingecko(gecko_id)
         let current_price = currentData.market_data.current_price.usd
         let new_price_multiplier, new_price
+        // if mcap was unset at that time, we take current mcap
         if (!mcap_at_ATH_TVL) {
             let current_mcap = currentData.market_data.market_cap.usd
             new_price_multiplier = ATH_TVL / current_mcap

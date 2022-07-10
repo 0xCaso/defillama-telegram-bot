@@ -29,16 +29,23 @@ const chartType = {
     2: "doughnut",
     3: "pie",
 }
-// commandHistory value is wrapped in an object
+// session variables value is wrapped into an object
 // because of a conversation plugin bug
-//
-// previousCommand is used in order to don't show
-// menu 2 times, generating errors
 bot.use(session({
     storage,
     initial: () => ({
         commandHistory: { value: [] },
-        previousCommand: { value: "" },
+        menuIstance: { value: "" },
+        timesCommandUsed: { value: {
+            searchProtocol: 0,
+            compareProtocols: 0,
+            fairPrice: 0,
+            getFirstTVLChart: 0,
+            getPerformersChart: 0,
+            getRatioChart: 0,
+            showHistory: 0,
+            deleteHistory: 0,
+        }},
     }),
 }));
 
@@ -71,8 +78,9 @@ function buildMenu() {
         menu.interact(text, command, {
             joinLastRow: joinLastRow,
             do: async ctx => {
+                ctx.session.menuIstance.value = ""
                 await ctx.conversation.enter(command)
-                ctx.session.previousCommand.value = "/" + command
+                ctx.session.timesCommandUsed.value[command]++
                 return false
             }
         })
@@ -94,16 +102,21 @@ const menuMiddleware = buildMenu();
 
 bot.use(menuMiddleware)
 
-bot.command("start", async (ctx) => {
-    await ctx.reply(
-    "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu")
-});
-bot.command("menu", (ctx) => {
-    if (ctx.session.previousCommand.value != "/menu") {
-        menuMiddleware.replyToContext(ctx)
-        ctx.session.previousCommand.value = "/menu"
+async function getNewMenu(ctx) {
+    if (ctx.session.menuIstance.value) {
+        try {
+            await bot.api.deleteMessage(ctx.chat.id, ctx.session.menuIstance.value)
+        } catch(e) {
+            console.error(e)
+        }
     }
-});
+    let menuMessage = await menuMiddleware.replyToContext(ctx)
+    ctx.session.menuIstance.value = menuMessage.message_id
+}
+
+let welcomeMsg = "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
+bot.command("start", async (ctx) => { await ctx.reply(welcomeMsg)});
+bot.command("menu", async (ctx) => { await getNewMenu(ctx) });
 bot.command("searchProtocol", async (ctx) => await commandSearchProtocol(ctx) );
 bot.command("compareProtocols", async (ctx) => await commandCompareProtocols(ctx) );
 bot.command("fairPrice", async (ctx) => await commandFairPrice(ctx) );
@@ -112,7 +125,9 @@ bot.command("getPerformersChart", async (ctx) => await commandPerformersChart(ct
 bot.command("getRatioChart", async (ctx) => await commandRatioChart(ctx) );
 
 bot.api.setMyCommands([
+    { command: "start", description: "Get a great welcome!" },
     { command: "menu", description: "Show the main menu" },
+    { command: "info", description: "Some info about this bot" },
 ])
 
 async function commandSearchProtocol(ctx, values) {
@@ -156,6 +171,7 @@ async function commandRatioChart(ctx, values) {
 
 async function decideCommandAndReplicate(command, ctx) {
     let values = command.split(" ");
+    ctx.session.timesCommandUsed.value[values[0].replace("/","")]++
     values.shift();
     if (command.includes("searchProtocol")) {
         await commandSearchProtocol(ctx, values);
@@ -277,6 +293,9 @@ async function searchWithRightFunction(msg) {
     else {
         result = await searchProtocolForName(msg);
     }
+    if (result.length > 10) {
+        result = result.slice(0, 10);
+    }
     return result
 }
 
@@ -307,7 +326,6 @@ async function checkIfProtocolFound(result, conversation, ctx) {
                 index+1 == 69420 ? 
                     await ctx.reply("😐 LOL that was a joke man, be serious please.") : 
                     await ctx.reply("😡 Invalid number, try again.");
-                    return [ctx, undefined]
             }
         } while(!ok)
     } else {            
@@ -315,6 +333,7 @@ async function checkIfProtocolFound(result, conversation, ctx) {
             return [ctx, result[0]];
         }
     }
+    return [ctx, undefined]
 }
 
 async function tryFindingProtocolOrCancel(conversation, ctx) {
@@ -406,7 +425,7 @@ async function fairPrice(conversation, ctx) {
     return;
 }
 
-async function getNumberOrCancel(condition, conversation, ctx) {
+async function getNumberOrCancel(condition, conversation, ctx, question, keyboard) {
     let ok = true
     let number = undefined
     let canceled = false
@@ -422,6 +441,8 @@ async function getNumberOrCancel(condition, conversation, ctx) {
                 ok = true
             } else {
                 await ctx.reply("🥲 Invalid number, try again or press /cancel to abort.");
+                if (question && keyboard)
+                    await replyWithKeyboard(ctx, question, keyboard);
                 ok = false
             }
         }
@@ -454,7 +475,8 @@ async function getFirstTVLChart(conversation, ctx) {
     let topN, type
     [ctx, topN] = await getNumberOrCancel(
         number => number >= 10 && number <= 50, 
-        conversation, ctx
+        conversation, ctx,
+        question, numberKeyboard
     )
     if (topN) {
         const question = 
@@ -467,7 +489,8 @@ async function getFirstTVLChart(conversation, ctx) {
         await replyWithKeyboard(ctx, question, numberKeyboard);
         [ctx, type] = await getNumberOrCancel(
             number => number >= 1 && number <= 3, 
-            conversation, ctx
+            conversation, ctx,
+            question, numberKeyboard
         )
         if (type) {
             await ctx.reply("🖌️ Drawing your nice chart...");
@@ -491,7 +514,8 @@ async function getPerformersChart(conversation, ctx) {
     let firstN, topN, best, day, type
     [ctx, firstN] = await getNumberOrCancel(
         number => number == 50 || number == 100, 
-        conversation, ctx
+        conversation, ctx,
+        question, numberKeyboard
     )
     if (firstN) {
         const question = 
@@ -504,7 +528,8 @@ async function getPerformersChart(conversation, ctx) {
         await replyWithKeyboard(ctx, question, numberKeyboard);
         [ctx, topN] = await getNumberOrCancel(
             number => number >= 10 && number <= 50, 
-            conversation, ctx
+            conversation, ctx,
+            question, numberKeyboard
         )
         if (topN) {
             const question =
@@ -515,7 +540,8 @@ async function getPerformersChart(conversation, ctx) {
             await replyWithKeyboard(ctx, question, numberKeyboard);
             [ctx, best] = await getNumberOrCancel(
                 number => number == 1 || number == 2, 
-                conversation, ctx
+                conversation, ctx,
+                question, numberKeyboard
             )
             if (best) {
                 best == 1 ? best = true : best = false
@@ -527,28 +553,15 @@ async function getPerformersChart(conversation, ctx) {
                 await replyWithKeyboard(ctx, question, numberKeyboard);
                 [ctx, day] = await getNumberOrCancel(
                     number => number == 1 || number == 2, 
-                    conversation, ctx
+                    conversation, ctx,
+                    question, numberKeyboard
                 )
                 if (day) {
                     day == 1 ? day = true : day = false
-                    const question = 
-                        "🥸 Chose the type of the chart:\n\n"+
-                        "1 - 📊 Bar\n"+
-                        "2 - 🍩 Doughnut\n"+
-                        "3 - 🥧 Pie\n"
-                    const numberKeyboard = new Keyboard()
-                        .text("1").text("2").text("3")
-                    await replyWithKeyboard(ctx, question, numberKeyboard);
-                    [ctx, type] = await getNumberOrCancel(
-                        number => number >= 1 && number <= 3, 
-                        conversation, ctx
-                    )
-                    if (type) {
-                        await ctx.reply("🖌️ Drawing your nice chart...");
-                        let buffer = await getTopPerformersChart(firstN, topN, best, day, chartType[type]);
-                        await ctx.replyWithPhoto(new InputFile(buffer))
-                        addCommandToHistory(ctx, "/getPerformersChart", [firstN, topN, best, day, chartType[type]])
-                    }
+                    await ctx.reply("🖌️ Drawing your nice chart...");
+                    let buffer = await getTopPerformersChart(firstN, topN, best, day, "bar");
+                    await ctx.replyWithPhoto(new InputFile(buffer))
+                    addCommandToHistory(ctx, "/getPerformersChart", [firstN, topN, best, day, "bar"])
                 }
             }
         }
@@ -568,7 +581,8 @@ async function getRatioChart(conversation, ctx) {
     let firstN, topN, mcap
     [ctx, firstN] = await getNumberOrCancel(
         number => number == 50 || number == 100, 
-        conversation, ctx
+        conversation, ctx,
+        question, numberKeyboard
     )
     if (firstN) {
         const question = 
@@ -581,7 +595,8 @@ async function getRatioChart(conversation, ctx) {
         await replyWithKeyboard(ctx, question, numberKeyboard);
         [ctx, topN] = await getNumberOrCancel(
             number => number >= 10 && number <= 50, 
-            conversation, ctx
+            conversation, ctx,
+            question, numberKeyboard
         )
         if (topN) {
             const question =
@@ -592,7 +607,8 @@ async function getRatioChart(conversation, ctx) {
             await replyWithKeyboard(ctx, question, numberKeyboard);
             [ctx, mcap] = await getNumberOrCancel(
                 number => number == 1 || number == 2,
-                conversation, ctx
+                conversation, ctx,
+                question, numberKeyboard
             )
             if (mcap) {
                 mcap == 1 ? mcap = true : mcap = false
@@ -607,8 +623,9 @@ async function getRatioChart(conversation, ctx) {
     return;
 }
 
-bot.catch((err, ctx) => {
+bot.catch((err) => {
     console.error(err)
-    ctx.reply("Something went wrong! Try pressing /menu or /cancel.")
+    err.ctx.reply("UPSY DAISY, something went wrong! Try pressing /menu or /cancel.")
 });
+
 run(bot)
