@@ -53,11 +53,6 @@ bot.use(createConversation(getRatioChart));
 bot.use(createConversation(showHistory));
 bot.use(createConversation(deleteHistory));
 
-async function fireCommand(ctx, command) {
-    await ctx.conversation.enter(command)
-    ctx.session.previousCommand.value = "/" + command
-}
-
 function buildMenu() {
     const menuHTML =
     `Please chose an option from the menu:\n\n`+
@@ -76,7 +71,8 @@ function buildMenu() {
         menu.interact(text, command, {
             joinLastRow: joinLastRow,
             do: async ctx => {
-                await fireCommand(ctx, command)
+                await ctx.conversation.enter(command)
+                ctx.session.previousCommand.value = "/" + command
                 return false
             }
         })
@@ -102,7 +98,7 @@ bot.command("start", async (ctx) => {
     await ctx.reply(
     "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu")
 });
-bot.command("menu", async (ctx) => {
+bot.command("menu", (ctx) => {
     if (ctx.session.previousCommand.value != "/menu") {
         menuMiddleware.replyToContext(ctx)
         ctx.session.previousCommand.value = "/menu"
@@ -191,7 +187,8 @@ async function showHistory(conversation, ctx) {
             `Type the number of the command you want to replicate.`,
             { parse_mode: "HTML" }
         )
-        const commandIndex = await getNumberOrCancel(
+        let commandIndex
+        [ctx, commandIndex] = await getNumberOrCancel(
             number => number > 0 && number <= ctx.session.commandHistory.value.length,
             conversation, ctx
         );
@@ -214,8 +211,8 @@ async function deleteHistory(conversation, ctx) {
             "Are you sure you want to delete the history?", 
             new Keyboard().text("Yes").text("No")
         )
-        const { message } = await conversation.wait();
-        if (message.text == "Yes") {
+        ctx = await conversation.wait();
+        if (ctx.message.text == "Yes") {
             ctx.session.commandHistory.value = [];
             await ctx.reply("History cleaned 🗑️. Press /menu to do something else");
         }
@@ -229,8 +226,6 @@ async function deleteHistory(conversation, ctx) {
 }
 
 function addCommandToHistory(ctx, command, values) {
-    console.log("BEFORE")
-    console.log(ctx.session);
     values = values.map(
         value => typeof value == "string" ? value.replace(" ", "") : value
     );
@@ -241,8 +236,6 @@ function addCommandToHistory(ctx, command, values) {
     if (!ctx.session.commandHistory.value.includes(commandString)) {
         ctx.session.commandHistory.value.push(commandString);
     }
-    console.log("AFTER")
-    console.log(ctx.session);
 }
 
 function getSingleInfo(name, data, ratio) {
@@ -304,21 +297,22 @@ async function checkIfProtocolFound(result, conversation, ctx) {
         });
         let ok = true
         do {
-            const { message } = await conversation.wait();
-            const index = parseInt(message.text) - 1;
+            ctx = await conversation.wait();
+            const index = parseInt(ctx.message.text) - 1;
             if (index >= 0 && index < result.length) {
                 ok = true;
-                return result[index];
+                return [ctx, result[index]];
             } else {
                 ok = false
                 index+1 == 69420 ? 
                     await ctx.reply("😐 LOL that was a joke man, be serious please.") : 
                     await ctx.reply("😡 Invalid number, try again.");
+                    return [ctx, undefined]
             }
         } while(!ok)
     } else {            
         if (result.length > 0) {
-            return result[0];
+            return [ctx, result[0]];
         }
     }
 }
@@ -327,14 +321,14 @@ async function tryFindingProtocolOrCancel(conversation, ctx) {
     let ok = true
     let protocol = undefined
     do {
-        const { message } = await conversation.wait();
-        if (message.text == "/cancel") {
+        ctx = await conversation.wait();
+        if (ctx.message.text == "/cancel") {
             ok = true
         }
         else {
             await ctx.reply("🦙 Asking to Llamas...");
-            let result = await searchWithRightFunction(message.text);
-            protocol = await checkIfProtocolFound(result, conversation, ctx);
+            let result = await searchWithRightFunction(ctx.message.text);
+            [ctx, protocol] = await checkIfProtocolFound(result, conversation, ctx);
             if (protocol) {
                 ok = true
             } else {
@@ -343,13 +337,14 @@ async function tryFindingProtocolOrCancel(conversation, ctx) {
             }
         }
     } while(!ok)
-    return protocol
+    return [ctx, protocol]
 }
 
 async function searchProtocol(conversation, ctx) {
     await ctx.deleteMessage();
     await ctx.reply("📝 Send the name (ex: Trader Joe) or the symbol with dollar (ex: $JOE):");
-    let protocol = await tryFindingProtocolOrCancel(conversation, ctx) 
+    let protocol
+    [ctx, protocol] = await tryFindingProtocolOrCancel(conversation, ctx) 
     if (protocol) {
         await printInfoProtocol(ctx, protocol)
         addCommandToHistory(ctx, "/searchProtocol", [protocol.name])
@@ -370,10 +365,11 @@ async function printCompareResults(ctx, protocolA, result) {
 async function compareProtocols(conversation, ctx) {
     await ctx.deleteMessage();
     await ctx.reply("📝 Send the name (or symbol) of the first protocol");
-    let protocolA = await tryFindingProtocolOrCancel(conversation, ctx)
+    let protocolA, protocolB
+    [ctx, protocolA] = await tryFindingProtocolOrCancel(conversation, ctx)
     if (protocolA) {
         await ctx.reply("📝 Send the name (or symbol) of the second protocol");
-        let protocolB = await tryFindingProtocolOrCancel(conversation, ctx)
+        [ctx, protocolB] = await tryFindingProtocolOrCancel(conversation, ctx)
         if (protocolB) {
             await ctx.reply("🤯 Making big maths...");
             let result = await compareProtocolAToProtocolB(protocolA, protocolB)
@@ -393,7 +389,8 @@ async function compareProtocols(conversation, ctx) {
 async function fairPrice(conversation, ctx) {
     await ctx.deleteMessage();
     await ctx.reply("📝 Send the name (ex: Trader Joe) or the symbol with dollar (ex: $JOE):");
-    let protocol = await tryFindingProtocolOrCancel(conversation, ctx)
+    let protocol
+    [ctx, protocol] = await tryFindingProtocolOrCancel(conversation, ctx)
     if (protocol) {
         await ctx.reply("🤯 Making big maths...");
         let result = await fairPriceAtATHTVL(protocol.slug)
@@ -414,13 +411,13 @@ async function getNumberOrCancel(condition, conversation, ctx) {
     let number = undefined
     let canceled = false
     do {
-        const { message } = await conversation.wait();
-        if (message.text == "/cancel") {
+        ctx = await conversation.wait();
+        if (ctx.message.text == "/cancel") {
             ok = true
             canceled = true
         }
         else {
-            number = parseInt(message.text)
+            number = parseInt(ctx.message.text)
             if (condition(number)) {
                 ok = true
             } else {
@@ -430,7 +427,9 @@ async function getNumberOrCancel(condition, conversation, ctx) {
         }
     } while(!ok)
     if (!canceled)
-        return number
+        return [ctx, number]
+    else
+        return [ctx, undefined]
 }
 
 async function replyWithKeyboard(ctx, question, keyboard) {
@@ -452,7 +451,8 @@ async function getFirstTVLChart(conversation, ctx) {
         .text("25").text("30").text("35").row()
         .text("40").text("45").text("50")
     await replyWithKeyboard(ctx, question, numberKeyboard)
-    let topN = await getNumberOrCancel(
+    let topN, type
+    [ctx, topN] = await getNumberOrCancel(
         number => number >= 10 && number <= 50, 
         conversation, ctx
     )
@@ -464,8 +464,8 @@ async function getFirstTVLChart(conversation, ctx) {
             "3 - 🥧 Pie\n"
         const numberKeyboard = new Keyboard()
             .text("1").text("2").text("3")
-        await replyWithKeyboard(ctx, question, numberKeyboard)
-        let type = await getNumberOrCancel(
+        await replyWithKeyboard(ctx, question, numberKeyboard);
+        [ctx, type] = await getNumberOrCancel(
             number => number >= 1 && number <= 3, 
             conversation, ctx
         )
@@ -488,7 +488,8 @@ async function getPerformersChart(conversation, ctx) {
     const numberKeyboard = new Keyboard()
         .text("50").text("100")
     await replyWithKeyboard(ctx, question, numberKeyboard)
-    let firstN = await getNumberOrCancel(
+    let firstN, topN, best, day, type
+    [ctx, firstN] = await getNumberOrCancel(
         number => number == 50 || number == 100, 
         conversation, ctx
     )
@@ -500,8 +501,8 @@ async function getPerformersChart(conversation, ctx) {
             .text("10").text("15").text("20").row()
             .text("25").text("30").text("35").row()
             .text("40").text("45").text("50")
-        await replyWithKeyboard(ctx, question, numberKeyboard)
-        let topN = await getNumberOrCancel(
+        await replyWithKeyboard(ctx, question, numberKeyboard);
+        [ctx, topN] = await getNumberOrCancel(
             number => number >= 10 && number <= 50, 
             conversation, ctx
         )
@@ -511,8 +512,8 @@ async function getPerformersChart(conversation, ctx) {
                 "Send 1 for best, 2 for worst."
             const numberKeyboard = new Keyboard()
                 .text("1 - Best").text("2 - Worst")
-            await replyWithKeyboard(ctx, question, numberKeyboard)
-            let best = await getNumberOrCancel(
+            await replyWithKeyboard(ctx, question, numberKeyboard);
+            [ctx, best] = await getNumberOrCancel(
                 number => number == 1 || number == 2, 
                 conversation, ctx
             )
@@ -523,8 +524,8 @@ async function getPerformersChart(conversation, ctx) {
                     "Send 1 for day, 2 for week."
                 const numberKeyboard = new Keyboard()
                     .text("1 - Day").text("2 - Week")
-                await replyWithKeyboard(ctx, question, numberKeyboard)
-                let day = await getNumberOrCancel(
+                await replyWithKeyboard(ctx, question, numberKeyboard);
+                [ctx, day] = await getNumberOrCancel(
                     number => number == 1 || number == 2, 
                     conversation, ctx
                 )
@@ -537,8 +538,8 @@ async function getPerformersChart(conversation, ctx) {
                         "3 - 🥧 Pie\n"
                     const numberKeyboard = new Keyboard()
                         .text("1").text("2").text("3")
-                    await replyWithKeyboard(ctx, question, numberKeyboard)
-                    let type = await getNumberOrCancel(
+                    await replyWithKeyboard(ctx, question, numberKeyboard);
+                    [ctx, type] = await getNumberOrCancel(
                         number => number >= 1 && number <= 3, 
                         conversation, ctx
                     )
@@ -564,7 +565,8 @@ async function getRatioChart(conversation, ctx) {
     const numberKeyboard = new Keyboard()
         .text("50").text("100")
     await replyWithKeyboard(ctx, question, numberKeyboard)
-    let firstN = await getNumberOrCancel(
+    let firstN, topN, mcap
+    [ctx, firstN] = await getNumberOrCancel(
         number => number == 50 || number == 100, 
         conversation, ctx
     )
@@ -576,8 +578,8 @@ async function getRatioChart(conversation, ctx) {
             .text("10").text("15").text("20").row()
             .text("25").text("30").text("35").row()
             .text("40").text("45").text("50")
-        await replyWithKeyboard(ctx, question, numberKeyboard)
-        let topN = await getNumberOrCancel(
+        await replyWithKeyboard(ctx, question, numberKeyboard);
+        [ctx, topN] = await getNumberOrCancel(
             number => number >= 10 && number <= 50, 
             conversation, ctx
         )
@@ -587,8 +589,8 @@ async function getRatioChart(conversation, ctx) {
                 "Send 1 for Mcap, 2 for FDV."
             const numberKeyboard = new Keyboard()
                 .text("1 - Mcap").text("2 - FDV")
-            await replyWithKeyboard(ctx, question, numberKeyboard)
-            let mcap = await getNumberOrCancel(
+            await replyWithKeyboard(ctx, question, numberKeyboard);
+            [ctx, mcap] = await getNumberOrCancel(
                 number => number == 1 || number == 2,
                 conversation, ctx
             )
@@ -605,5 +607,8 @@ async function getRatioChart(conversation, ctx) {
     return;
 }
 
-bot.catch((err) => console.error(err));
+bot.catch((err, ctx) => {
+    console.error(err)
+    ctx.reply("Something went wrong! Try pressing /menu or /cancel.")
+});
 run(bot)

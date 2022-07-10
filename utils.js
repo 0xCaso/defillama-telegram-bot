@@ -183,10 +183,10 @@ async function getBestOrWorseOfFirstNTVL_LastDayOrWeek(_n, _firstN, _best, _day)
     let _apiLabels, _apiData
     let protocols = await getProtocols();
     let change
-    parseInt(_day) ? change = "change_1d" : change = "change_7d"
+    Number(_day) ? change = "change_1d" : change = "change_7d"
     protocols = protocols.filter(p => p[change] != null)
     let selected = protocols.slice(0, _firstN)
-    parseInt(_best) ?
+    Number(_best) ?
         selected = selected.sort((a, b) => b[change] - a[change])
     :
         selected = selected.sort((a, b) => a[change] - b[change])  
@@ -203,8 +203,8 @@ async function getFDVFromCoingecko(_id) {
         let price = data.market_data.current_price.usd
         let fdv = data.market_data.total_supply * price
         return fdv
-    } catch(err) {
-        console.log("ERROR: Coingecko ded")
+    } catch(e) {
+        console.error(e)
         return 0
     }
 }
@@ -234,7 +234,7 @@ async function getFirstNTVLWithBestRatio(_n, _firstN, _mcap) {
             }
         })
     )
-    parseInt(_mcap) ? ( num = "mcap", den = "tvl" ) : ( num = "fdv", den = "tvl" )
+    Number(_mcap) ? ( num = "mcap", den = "tvl" ) : ( num = "fdv", den = "tvl" )
     selected = selected.sort((a, b) => a[num] / a[den] - b[num] / b[den])
     selected = selected.slice(0, _n)
     let data = []
@@ -350,7 +350,7 @@ async function fairPriceAtATHTVL(_protocolSlug) {
         }
         return [new_price, new_price_multiplier]
     } catch(e) {
-        console.log(e)
+        console.error(e)
         return [0, 0]
     }
 }
