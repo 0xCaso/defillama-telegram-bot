@@ -319,7 +319,7 @@ async function compareProtocolAToProtocolB(protocolAData, protocolBData) {
     }
 }
 
-// we could consider current mcap/fdv ratio
+// we could also return the mcap/fdv ratio, for user info
 async function fairPriceAtATHTVL(_protocolSlug) {
     try {
         // get history of TVL

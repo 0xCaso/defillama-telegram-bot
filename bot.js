@@ -29,9 +29,14 @@ const chartType = {
     2: "doughnut",
     3: "pie",
 }
+function getSessionKey(ctx) {
+    return ctx.from?.id.toString();
+}
+  
 // session variables value is wrapped into an object
 // because of a conversation plugin bug
 bot.use(session({
+    getSessionKey,
     storage,
     initial: () => ({
         commandHistory: { value: [] },
@@ -115,6 +120,44 @@ async function getNewMenu(ctx) {
 }
 
 let welcomeMsg = "🦙 Welcome to DefiLlamaBot!\n\nTo use the bot, press /menu"
+let infoMsg1 = `
+<b>Some general and maybe useful info: Tokenomics 101 and commands explaination</b>\n
+Mcap = Market Cap = Price * Circulant Supply
+FDV = Fully Diluited Valuation = Price * Total Supply
+TVL = Total Value Locked = $ locked in protocol
+
+Important: when considering Mcap / TVL, is a good thing evaluating also Mcap / FDV.
+
+Mcap / FDV is a value between 0 and 1, where near 0 is the worst (very low circulant compared to the total supply) 
+and near 1 is the best;\n
+Mcap (or FDV) / TVL is a value greater than 0. The lower it is, the more undervalued the protocol is;
+if it's near to 1, in the case of FDV / TVL (and Mcap / FDV if Mcap / FDV is high), we can say the protocol is well 
+valued (something like a fair price), and greater than 1 it's overvalued.
+
+Let's see now the most interesting commands:
+
+For the command <b>compareProtocols</b>➗, DefiLlama uses Mcap / TVL ratio to compare protocols.\n
+For the command <b>fairPrice</b>🚀, we look at the data of the protocol when its TVL was at all time high (ATH);
+that point was when the protocol was most used. Than we put Mcap / TVL equal to 1, for what we said above.
+Unfortunately, Mcap is not the perfect indicator in this case (FDV would be better, think about the case
+Mcap / FDV = 0.01), but we're forced to use it cause we don't have past data about FDV.\n
+For the command <b>getRatioChart</b>📈, look at the example below.
+`
+let infoMsg2 = `
+On the x-axis we have FDV/TVL (remember, the lower the better), on the y-axis Mcap/TVL (the higher the better).
+Also you can see protocols have different radius: the smaller the radius, the lower the Mcap (this is because
+I wanted to show the fact they have more growth space).
+
+That said, we can say the best protocols are the ones in the top left corner and with the smallest radius (this
+means low FDV/TVL, high Mcap/FDV and low Mcap). This is the way you should read this chart.
+
+More questions? Feel free to send me a message on twitter (https://twitter.com/0xCaos) or visit the Github repository 
+(https://github.com/0xCaos/defillama-telegram-bot);
+Also feel free to contribute, or add ideas making a new issue on Github!
+
+Have fun and thank you for using the bot 👊
+`
+let ratioExample = "./ratioExample.jpg"
 bot.command("start", async (ctx) => { await ctx.reply(welcomeMsg)});
 bot.command("menu", async (ctx) => { await getNewMenu(ctx) });
 bot.command("searchProtocol", async (ctx) => await commandSearchProtocol(ctx) );
@@ -123,11 +166,18 @@ bot.command("fairPrice", async (ctx) => await commandFairPrice(ctx) );
 bot.command("getFirstTVLChart", async (ctx) => await commandTvlChart(ctx) );
 bot.command("getPerformersChart", async (ctx) => await commandPerformersChart(ctx) );
 bot.command("getRatioChart", async (ctx) => await commandRatioChart(ctx) );
+bot.command("tip", async (ctx) => await sendTip(ctx) );
+bot.command("info", async (ctx) => {
+    await ctx.reply(infoMsg1, { parse_mode: "HTML" }) 
+    await ctx.replyWithPhoto(new InputFile(ratioExample))
+    await ctx.reply(infoMsg2, { parse_mode: "HTML", disable_web_page_preview: true}) 
+});
 
 bot.api.setMyCommands([
-    { command: "start", description: "Get a great welcome!" },
-    { command: "menu", description: "Show the main menu" },
-    { command: "info", description: "Some info about this bot" },
+    { command: "start", description: "Get a great welcome! 👋" },
+    { command: "menu", description: "Show the main menu ⚙️" },
+    { command: "info", description: "Some info about this bot 📖" },
+    { command: "tip", description: "Send a tip if you enjoy the bot 😊" },
 ])
 
 async function commandSearchProtocol(ctx, values) {
@@ -622,6 +672,36 @@ async function getRatioChart(conversation, ctx) {
     await ctx.reply("That's it! Press /menu to do something else");
     return;
 }
+
+async function sendTip(ctx) {
+    let id = ctx.from.id
+    const invoice = {
+        chat_id: id,
+        title: 'Nice tip for a nice bot',
+        description: 'Send a tip if you enjoyed using this bot 😊',
+        provider_token: process.env.PAYMENT_TOKEN,
+        start_parameter: 'get_access',
+        currency: 'EUR',
+        prices: [
+            { label: '1', amount: 1 * 100 },
+        ],
+        payload: {
+            unique_id: `${id}_${Number(new Date())}`,
+            provider_token: process.env.PAYMENT_TOKEN
+        },
+        max_tip_amount: 10000 * 100,
+        suggested_tip_amounts: [
+            4 * 100, 9 * 100, 24 * 100, 49 * 100
+        ]
+    }
+    await bot.api.raw.sendInvoice(invoice)
+}
+
+bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true))
+
+bot.on(':successful_payment', async (ctx) => {
+    await ctx.reply(`Thanks a lot for the tip! Hope you'll continue to have fun with the bot!`)
+})
 
 bot.catch((err) => {
     console.error(err)
