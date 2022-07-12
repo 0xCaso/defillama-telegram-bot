@@ -1,6 +1,8 @@
 # DefiLlama Telegram Bot
 A bot that you can use to interact with DefiLlama from Telegram. To find it on Telegram, literally search for 'DefiLlamaBot'.
 
+![Preview](https://github.com/0xCaos/defillama-telegram-bot/blob/main/defillama_bot.gif)  
+
 ## What can you do with this bot?
 You can do some nice things, such as:
 - search for a protocol listed in DefiLlama
