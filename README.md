@@ -1,5 +1,5 @@
 # DefiLlama Telegram Bot
-A bot that you can use to interact with DefiLlama from Telegram. To find it on Telegram, literally search for DefiLlamaBot.
+A bot that you can use to interact with DefiLlama from Telegram. To find it on Telegram, literally search for 'DefiLlamaBot'.
 
 ## What can you do with this bot?
 You can do some nice things, such as:
@@ -8,7 +8,11 @@ You can do some nice things, such as:
 - see the price that a protocol could have had when its TVL was at ATH, if MCAP was equal to TVL
 - get a chart of the first N protocols for TVL
 - get a chart of the first N performers or losers, of the last day or week
-- get a chart with the protocols with highest potential, evaluating MCAP, FDV and TVL
+- get a chart with the protocols with highest potential, evaluating MCAP, FDV and TVL  
+
+You can interact with the bot using the `/menu` command, from which you can fire all the commands.  
+You can also use the command `/info` to get better explainations about the logic behind the stats you can get.  
+If you're interested about the (not complex) math used for the charts and comparisons, look inside `utils.js`.
 
 ## Acknowledgments
 I would like to say thank you to DefiLlama team (free APIs are nice eheh) and to grammY's (Telegram Bot Framework) community which helped me in their Telegram group, saving me a lot of time for real.
