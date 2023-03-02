@@ -20,7 +20,7 @@ If you're interested about the (not complex) math used for the charts and compar
 I would like to say thank you to DefiLlama team (free APIs are nice eheh) and to grammY's (Telegram Bot Framework) community which helped me in their Telegram group, saving me a lot of time for real.
 
 ## Contributions
-If you would like to see new features for this bot, feel free to open an issue or a pull request here, or write me on Twitter [(0xCaos)](https://twitter.com/0xCaos).  
+If you would like to see new features for this bot, feel free to open an issue or a pull request here, or write me on Twitter [(0xCaso)](https://twitter.com/0xCaso).  
 For local dev, just pull the repo, `npm install` and setup the `.env` file with the variables used inside `bot.js`. Then fire `node bot.js` and enjoy.
 
 Useful links:  
